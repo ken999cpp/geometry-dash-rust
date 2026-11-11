@@ -1,0 +1,124 @@
+{
+  "name": "Mode Laboratory",
+  "background": "assets/background/stereomadness_bw.png",
+  "music": "assets/music/BackOnTrack.mp3",
+  "objects": [
+    {
+      "type": "cube_portal",
+      "x": 800,
+      "y": 420
+    },
+    {
+      "type": "trigger",
+      "triggerType": "background_color_change",
+      "x": 800,
+      "y": 0,
+      "triggerParams": {
+        "color": "#283eff",
+        "alpha": 1,
+        "duration": 0.4
+      }
+    },
+    {
+      "type": "ship_portal",
+      "x": 3600,
+      "y": 420
+    },
+    {
+      "type": "trigger",
+      "triggerType": "background_color_change",
+      "x": 3600,
+      "y": 0,
+      "triggerParams": {
+        "color": "#00a0a0",
+        "alpha": 1,
+        "duration": 0.4
+      }
+    },
+    {
+      "type": "wave_portal",
+      "x": 6400,
+      "y": 420
+    },
+    {
+      "type": "trigger",
+      "triggerType": "background_color_change",
+      "x": 6400,
+      "y": 0,
+      "triggerParams": {
+        "color": "#9030ff",
+        "alpha": 1,
+        "duration": 0.4
+      }
+    },
+    {
+      "type": "robot_portal",
+      "x": 9200,
+      "y": 420
+    },
+    {
+      "type": "trigger",
+      "triggerType": "background_color_change",
+      "x": 9200,
+      "y": 0,
+      "triggerParams": {
+        "color": "#20a050",
+        "alpha": 1,
+        "duration": 0.4
+      }
+    },
+    {
+      "type": "spider_portal",
+      "x": 12000,
+      "y": 420
+    },
+    {
+      "type": "trigger",
+      "triggerType": "background_color_change",
+      "x": 12000,
+      "y": 0,
+      "triggerParams": {
+        "color": "#a02060",
+        "alpha": 1,
+        "duration": 0.4
+      }
+    },
+    {
+      "type": "ball_portal",
+      "x": 14800,
+      "y": 420
+    },
+    {
+      "type": "trigger",
+      "triggerType": "background_color_change",
+      "x": 14800,
+      "y": 0,
+      "triggerParams": {
+        "color": "#b07010",
+        "alpha": 1,
+        "duration": 0.4
+      }
+    },
+    {
+      "type": "cube_portal",
+      "x": 17600,
+      "y": 420
+    },
+    {
+      "type": "trigger",
+      "triggerType": "background_color_change",
+      "x": 17600,
+      "y": 0,
+      "triggerParams": {
+        "color": "#283eff",
+        "alpha": 1,
+        "duration": 0.4
+      }
+    },
+    {
+      "type": "block",
+      "x": 20720,
+      "y": 0
+    }
+  ]
+}

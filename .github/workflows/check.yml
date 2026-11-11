@@ -1,0 +1,30 @@
+name: Rust
+on: [push, pull_request]
+jobs:
+  desktop:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev libx11-dev libxi-dev libxcursor-dev libxrandr-dev
+      - run: cargo fmt --check
+      - run: cargo check --locked
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+      - name: Prepare bundle
+        shell: bash
+        run: |
+          mkdir -p dist/geometry-dash
+          cp target/release/geometry-dash${{ runner.os == 'Windows' && '.exe' || '' }} dist/geometry-dash/
+          cp -r assets levels README.md docs dist/geometry-dash/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: geometry-dash-${{ runner.os }}
+          path: dist/geometry-dash
