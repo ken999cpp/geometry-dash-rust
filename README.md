@@ -148,8 +148,10 @@ writable `.git` directory and writable global excludes file.
 When this environment protects `.git` from writes, a prepared commit can be
 exported to the ignored `dist/geometry-dash-prepared.bundle`. In a normal terminal,
 run `bash scripts/apply-prepared-commit.sh` to initialize Git, import that commit
-and configure `origin`. It preserves working files and refuses to replace existing
-commit history. Creating the GitHub repository and publishing require account access.
+and configure `origin`. It preserves working files and refuses to replace unrelated
+commit history. Repeating the command after import keeps the current branch and
+files; output does not require a pager such as `less`. Creating the GitHub
+repository and publishing require account access.
 
 Optional Codex skills for this desktop game are `screenshot` and `gh-fix-ci`.
 `bash scripts/setup-skills.sh` installs them using the bundled Codex skill installer;
