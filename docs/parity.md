@@ -4,11 +4,11 @@ Implementation exists for the features below. Automated core checks are distinct
 from manual desktop and C++ comparison checks; unchecked items have not been
 validated on both supported platforms.
 
-Local validation: `cargo check`, formatting, Clippy with warnings denied, the Linux
-release build, 40 core tests and 20 Bevy ECS/UI/audio tests pass. Desktop launch attempts
-are blocked by sandbox access to both Wayland and X11; rendered gameplay and audio
-have not been manually verified. Windows builds are configured in CI but have not
-been run from this environment.
+Windows validation on 2026-11-13: formatting, 53 core tests, 27 Bevy ECS/UI/audio
+tests, and debug/release builds pass. The desktop game was opened and its level
+rendering inspected. A Steam-original cube jump was captured and compared with
+the Rust trajectory. This does not validate complete level playthroughs, every
+mode, all collision cases, audio parity or the Linux desktop build.
 
 | Area | Implemented behavior | Acceptance check |
 | --- | --- | --- |
@@ -19,7 +19,7 @@ been run from this environment.
 | Objects | Blocks, platforms, spikes, minispikes, special objects, pads, orbs | Automated representative contacts; original-level playthrough pending |
 | Practice | Add/remove checkpoints, full simulation restore, music seeking | Automated state restore; manual audio sync pending |
 | Triggers | Background/ground/general colors, opacity, duration, completion | Automated timeline restore; visual comparison pending |
-| Game UI | Main menu, level choice, pause, restart, completion, loading assets | Manual pending |
+| Game UI | Original menu sprites/bitmap fonts, 320-point layout, pause and gameplay HUD | Main/selection/pause compared with captures; see interface-reference.md |
 | Profile | Attempts, normal/practice progress, cube icon choice | Import tested; desktop restart check pending |
 | Editor | Palette, all original objects, grid, selection, drag, move, rotate, duplicate, delete | Undo tested; desktop interaction check pending |
 | Editor files | New/open/save/save-as, name/music/background and trigger settings | Failed-save protection tested; desktop dialogs pending |
@@ -29,11 +29,11 @@ been run from this environment.
 
 - Qt widgets are replaced by Bevy UI in one window. File selection uses in-app
   path dialogs rather than native operating-system dialogs.
-- Physics uses a fixed logical 1440-unit viewport height. This removes the C++
+- Physics uses a fixed logical 320-native-unit viewport height. This removes the C++
   dependency between display dimensions, floor position and collision geometry.
 - All gameplay interactions run on fixed ticks. Input does not execute jumps
-  outside the physics loop. Ship displacement preserves the C++ update's two
-  vertical advances, with surface constraints resolved afterward.
+  outside the physics loop. Ship displacement advances once per tick, with
+  surface constraints resolved afterward.
 - Rotated contacts use oriented rectangles and actual vertical surface spans.
   The legacy spike, minispike and special-object collision rectangles are retained.
 - JSON IDs and sorted broad-phase order replace Qt scene iteration order.
@@ -43,8 +43,8 @@ been run from this environment.
   PNG artwork; the level-rating star is also a PNG. Original checkpoint and small
   cube assets render practice markers and the ship rider. See [sprite notes](sprite-prompts.md).
 - Audio uses supplied Ogg copies. User music imports currently accept Ogg only.
-- Ship uses the original C++ movement constants and free-flight trajectory. Cube
-  parameters currently match the user-restored C++ values; algorithm differences
+- Movement uses the source-based GD 2.2 coefficients and quantization. The cube
+  trajectory is also checked against a capture of the Steam original. Limits
   remain documented in the [tuning guide](physics-tuning.md). See
   [physics notes](physics.md). Death/reveal phases use frame time, block fixed-step
   catch-up and hide the reset under a fade; no velocity ramp is applied.
@@ -52,6 +52,8 @@ been run from this environment.
   uses separate color, gradient and repeating-pattern layers.
 - The editor uses an icon HUD with a bottom object palette, separate build/edit/delete
   modes, hover hints, redo and independent grid snapping; see [editor controls](editor.md).
+- Editor START POS markers restore mode/gravity, color triggers, corridor/camera and
+  music offset, without affecting normal play or awarding saved progress.
 - Editor triggers use circular markers above the level while preserving JSON and
   gameplay coordinates. Ground layers render above the background in every screen.
 - Escape in the main menu opens application exit confirmation, including Russian
