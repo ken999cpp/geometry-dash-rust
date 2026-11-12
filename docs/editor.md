@@ -39,3 +39,18 @@ regions at 960×640, 1280×720 and 1920×1080, all palette categories, absence o
 inside button hierarchies, undo/redo branching and selection-mode transitions.
 
 Layout reference: [Geometry Dash editor guide](https://www.robtopgames.com/files/GDEditor.pdf).
+
+## Start positions
+
+Open a level with E from selection or pause. In the editor's Triggers category,
+choose START POS and place it where the player should begin. Select the marker
+to change its mode and gravity with the two property buttons, or M and V.
+The default Auto settings inherit earlier mode/gravity portals. F5 starts at the
+selected start marker, or the last marker when another object is selected.
+Deleting all start markers restores the ordinary playtest start.
+
+Start positions are saved in level JSON and participate in undo, redo, movement,
+duplication and deletion. They are editor helpers: ordinary level play ignores
+them, they do not extend level length, and playtests do not award saved progress.
+Restart returns to the same start position. Preceding color-trigger timelines,
+the portal corridor, camera and music offset are restored at that position.
