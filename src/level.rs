@@ -67,6 +67,7 @@ impl LevelObject {
                 | "NormalGravityPortal"
                 | "trigger"
                 | "end_level"
+                | "start_pos"
         ) && (self.kind != "trigger"
             || matches!(
                 self.trigger_type.as_deref(),
@@ -230,7 +231,7 @@ impl Level {
     pub fn length(&self) -> f64 {
         self.objects
             .iter()
-            .filter(|o| o.kind != "end_level")
+            .filter(|o| !matches!(o.kind.as_str(), "end_level" | "start_pos"))
             .map(|o| o.x)
             .fold(0., f64::max)
             + constants::END_LEVEL_INDENT
