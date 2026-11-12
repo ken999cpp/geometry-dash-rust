@@ -38,6 +38,7 @@ pub(super) fn load_art(mut commands: Commands, server: Res<AssetServer>) {
         ("spider_portal", "portals/SpiderPortal.png"),
         ("play", "menubuttons/pm_playbtn.png"),
         ("settings", "menubuttons/m_m_settings_btn.png"),
+        ("start_pos", "native_ui/edit_eStartPosBtn_001.png"),
     ] {
         art.insert(key.into(), server.load(path));
     }
@@ -110,6 +111,8 @@ fn art_button(
     commands.entity(button).despawn_children();
     let size = if key.ends_with("portal") {
         Vec2::new(18., 38.)
+    } else if key == "start_pos" {
+        Vec2::new(38., 24.)
     } else if key == "platform" {
         Vec2::new(36., 14.)
     } else if key == "minispike" {
@@ -223,6 +226,59 @@ pub(super) fn build(commands: &mut Commands, game: &Game, art: &EditorArt) {
             ..default()
         },
     );
+    if let Some(object) = editor
+        .selected
+        .and_then(|id| editor.level.objects.get(id))
+        .filter(|o| o.kind == "start_pos")
+    {
+        let settings = group(
+            commands,
+            root,
+            Node {
+                position_type: PositionType::Absolute,
+                left: percent(22),
+                top: px(75),
+                align_items: AlignItems::Center,
+                column_gap: px(8),
+                ..default()
+            },
+        );
+        icon_button(
+            commands,
+            settings,
+            Action::StartMode,
+            Icon::Robot,
+            "Cycle start mode (M)",
+            false,
+        );
+        icon_button(
+            commands,
+            settings,
+            Action::StartGravity,
+            Icon::Arrow(-90.),
+            "Cycle start gravity (V)",
+            false,
+        );
+        caption(
+            commands,
+            settings,
+            format!(
+                "Start: {} / {}",
+                object
+                    .extra
+                    .get("mode")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("auto"),
+                object
+                    .extra
+                    .get("gravity")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("auto")
+            ),
+            Node::default(),
+            16.,
+        );
+    }
     art_button(
         commands,
         left,
@@ -440,7 +496,7 @@ pub(super) fn build(commands: &mut Commands, game: &Game, art: &EditorArt) {
         let range = match editor.category {
             1 => 3..6,
             2 => 6..14,
-            _ => 14..18,
+            _ => 14..19,
         };
         for tool in range {
             let name = crate::editor::TOOLS[tool];
