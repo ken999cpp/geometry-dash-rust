@@ -3,7 +3,6 @@ use bevy::prelude::*;
 #[derive(Clone, Copy)]
 pub(super) enum Icon {
     Cursor,
-    Pause,
     Build,
     Trash,
     Undo,
@@ -131,10 +130,6 @@ pub(super) fn draw(commands: &mut Commands, parent: Entity, icon: Icon) {
         },
     );
     match icon {
-        Icon::Pause => {
-            rect(commands, node, 6., 5., 7., 23., true);
-            rect(commands, node, 20., 5., 7., 23., true);
-        }
         Icon::Cursor => path(
             commands,
             node,
