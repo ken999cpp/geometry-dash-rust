@@ -2,16 +2,19 @@ use super::{
     Game,
     ui::{Action, UiRoot, dialog_label},
 };
-use crate::storage::MusicChannel;
-use bevy::{prelude::*, ui::RelativeCursorPosition};
+use crate::storage::{FPS_LIMITS, MusicChannel};
+use bevy::{
+    prelude::*,
+    ui::{InteractionDisabled, RelativeCursorPosition},
+};
 
 #[derive(Component)]
-pub(super) struct MusicSlider(MusicChannel);
+pub(super) struct MusicSlider(pub(super) MusicChannel);
 #[derive(Component)]
 pub(super) struct VolumeVisual {
-    channel: MusicChannel,
-    value: u8,
-    knob: bool,
+    pub(super) channel: MusicChannel,
+    pub(super) value: u8,
+    pub(super) knob: bool,
 }
 #[derive(Component)]
 pub(super) struct VolumeLabel(MusicChannel, u8);
@@ -27,7 +30,7 @@ fn button(
     action: Action,
     text: &str,
     font: &Handle<Font>,
-) {
+) -> Entity {
     let button = node(
         commands,
         parent,
@@ -47,6 +50,7 @@ fn button(
         ),
     );
     dialog_label(commands, button, text, 21., font);
+    button
 }
 
 pub(super) fn build(commands: &mut Commands, game: &Game, font: &Handle<Font>) {
@@ -116,6 +120,35 @@ pub(super) fn build(commands: &mut Commands, game: &Game, font: &Handle<Font>) {
             font,
         );
     }
+    let fps_row = node(
+        commands,
+        panel,
+        Node {
+            width: percent(100),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::SpaceBetween,
+            column_gap: px(12),
+            ..default()
+        },
+    );
+    dialog_label(commands, fps_row, "FPS", 20., font);
+    for fps in FPS_LIMITS {
+        let option = button(
+            commands,
+            fps_row,
+            Action::FpsLimit(fps),
+            &fps.to_string(),
+            font,
+        );
+        if !game.display_rate.supports(fps) {
+            commands.entity(option).insert(InteractionDisabled);
+        }
+    }
+    let display_label = match game.display_rate.refresh_rate_millihertz {
+        Some(rate) => format!("Экран: {:.2} Гц", f64::from(rate) / 1000.),
+        None => "Частота экрана неизвестна · до 60 FPS".into(),
+    };
+    dialog_label(commands, panel, &display_label, 16., font);
     for (channel, title) in [
         (MusicChannel::Menu, "Музыка в меню"),
         (MusicChannel::Level, "Музыка в уровне"),
@@ -229,7 +262,7 @@ pub(super) fn sliders(
     mut labels: Query<(&mut VolumeLabel, &mut Text)>,
     mut dragging: Local<Option<MusicChannel>>,
 ) {
-    if !game.settings_open || game.exit_dialog.is_some() {
+    if (!game.settings_open && game.screen != super::Screen::Paused) || game.exit_dialog.is_some() {
         *dragging = None;
         return;
     }
