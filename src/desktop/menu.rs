@@ -17,6 +17,8 @@ impl MenuArt {
 pub(super) struct ImageButton {
     pub background: Color,
 }
+#[derive(Component)]
+pub(super) struct MirroredButton;
 impl Default for ImageButton {
     fn default() -> Self {
         Self {
