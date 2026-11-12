@@ -6,7 +6,6 @@ use crate::{
     simulation::{CEILING, PlayerMode, Status},
 };
 use bevy::{camera::ScalingMode, prelude::*, sprite::Text2dShadow};
-use std::collections::VecDeque;
 
 mod depth {
     pub const BACKGROUND: f32 = -200.;
@@ -58,31 +57,33 @@ enum MenuVisual {
     Line,
     Runner,
 }
-const MENU_TILE_WIDTH: f32 = constants::VIEWPORT_HEIGHT as f32 * 856. / 1190.;
+const MENU_TILE_WIDTH: f32 = 512. * constants::GD_SCALE as f32;
+const MENU_GROUND_TILE_WIDTH: f32 = 128. * constants::GD_SCALE as f32;
 const MENU_FLOOR_Y: f32 = 240.;
 const GROUND_TILE_WIDTH: f32 = 440.;
 const GROUND_STRIP_WIDTH: f32 = GROUND_TILE_WIDTH * 32.;
 #[derive(Resource, Default)]
-struct Trail(VecDeque<Vec2>);
+struct Trail(Handle<Mesh>);
+#[derive(Component)]
+struct WaveTrailVisual;
 
 impl Plugin for PresentationPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Trail(VecDeque::with_capacity(300)))
-            .add_systems(Startup, setup)
-            .add_systems(
-                Update,
-                (
-                    rebuild,
-                    finish_loading,
-                    animate,
-                    update_ship_rider,
-                    sync_checkpoints,
-                    animate_menu,
-                    draw_helpers,
-                )
-                    .chain()
-                    .in_set(super::FrameSet::World),
-            );
+        app.add_systems(Startup, setup).add_systems(
+            Update,
+            (
+                rebuild,
+                finish_loading,
+                animate,
+                update_wave_trail,
+                update_ship_rider,
+                sync_checkpoints,
+                animate_menu,
+                draw_helpers,
+            )
+                .chain()
+                .in_set(super::FrameSet::World),
+        );
     }
 }
 #[derive(Resource)]
@@ -94,6 +95,16 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
+    let trail_mesh = meshes.add(super::wave::ribbon(&[], 16.));
+    commands.spawn((
+        WaveTrailVisual,
+        bevy::camera::visibility::NoFrustumCulling,
+        Mesh2d(trail_mesh.clone()),
+        MeshMaterial2d(materials.add(Color::WHITE)),
+        Transform::from_xyz(0., 0., depth::PLAYER - 1.),
+        Visibility::Hidden,
+    ));
+    commands.insert_resource(Trail(trail_mesh));
     commands.insert_resource(TriggerArt {
         circle: meshes.add(Circle::new(1.)),
         black: materials.add(Color::BLACK),
@@ -150,6 +161,7 @@ pub fn texture(object: &LevelObject) -> Option<String> {
         "wave_portal" => "portals/WavePortalback.png".into(),
         "ball_portal" => "portals/BallPortal.png".into(),
         "spider_portal" => "portals/SpiderPortal.png".into(),
+        "start_pos" => "native_ui/edit_eStartPosBtn_001.png".into(),
         _ => return None,
     })
 }
@@ -166,35 +178,55 @@ fn rebuild(
     server: Res<AssetServer>,
     trigger_art: Res<TriggerArt>,
     visuals: Query<Entity, With<LevelVisual>>,
-    mut trail: ResMut<Trail>,
 ) {
     if !game.scene_dirty {
         return;
     }
     game.scene_dirty = false;
-    trail.0.clear();
     for e in &visuals {
         commands.entity(e).despawn();
     }
     if matches!(game.screen, Screen::Menu | Screen::Levels | Screen::Icons) {
         for index in -4..=4 {
+            if game.screen == Screen::Levels && index != 0 {
+                continue;
+            }
             commands.spawn((
                 LevelVisual,
                 MenuVisual::Tile(index),
                 Sprite {
-                    image: server.load("background/stereomadness_bw.png"),
+                    image: server.load(if game.screen == Screen::Levels {
+                        "native_ui/gradient.png"
+                    } else {
+                        "native_ui/background.png"
+                    }),
                     custom_size: Some(Vec2::new(
-                        MENU_TILE_WIDTH,
-                        constants::VIEWPORT_HEIGHT as f32,
+                        if game.screen == Screen::Levels {
+                            10000.
+                        } else {
+                            MENU_TILE_WIDTH
+                        },
+                        if game.screen == Screen::Levels {
+                            constants::VIEWPORT_HEIGHT as f32
+                        } else {
+                            MENU_TILE_WIDTH
+                        },
                     )),
                     ..default()
                 },
                 Transform::from_xyz(
                     0.,
-                    constants::VIEWPORT_HEIGHT as f32 / 2.,
+                    if game.screen == Screen::Levels {
+                        constants::VIEWPORT_HEIGHT as f32 / 2.
+                    } else {
+                        MENU_TILE_WIDTH / 2.
+                    },
                     depth::BACKGROUND,
                 ),
             ));
+        }
+        if game.screen == Screen::Levels {
+            return;
         }
         commands.spawn((
             LevelVisual,
@@ -206,17 +238,21 @@ fn rebuild(
             LevelVisual,
             MenuVisual::Pattern,
             Sprite {
-                image: server.load("ground/blacksquare.png"),
-                custom_size: Some(Vec2::new(GROUND_STRIP_WIDTH, 250.)),
+                image: server.load("native_ui/ground.png"),
+                custom_size: Some(Vec2::new(GROUND_STRIP_WIDTH, MENU_GROUND_TILE_WIDTH)),
                 image_mode: SpriteImageMode::Tiled {
                     tile_x: true,
                     tile_y: false,
-                    stretch_value: 1.0,
+                    stretch_value: constants::GD_SCALE as f32 / 4.,
                 },
-                color: Color::srgba(1., 1., 1., 0.3),
+                color: Color::WHITE,
                 ..default()
             },
-            Transform::from_xyz(0., 115., depth::PATTERN),
+            Transform::from_xyz(
+                0.,
+                MENU_FLOOR_Y - MENU_GROUND_TILE_WIDTH / 2.,
+                depth::PATTERN,
+            ),
         ));
         commands.spawn((
             LevelVisual,
@@ -330,7 +366,7 @@ fn rebuild(
         return;
     };
     for object in &level.objects {
-        if !editing && matches!(object.kind.as_str(), "trigger" | "end_level") {
+        if !editing && matches!(object.kind.as_str(), "trigger" | "end_level" | "start_pos") {
             continue;
         }
         if editing && object.editor_marker() {
@@ -351,7 +387,11 @@ fn rebuild(
                 Vec2::ONE,
             )
         };
-        sprite.custom_size = Some(Vec2::new(size.x as f32, size.y as f32));
+        sprite.custom_size = Some(if object.kind == "start_pos" {
+            Vec2::new(80., 50.)
+        } else {
+            Vec2::new(size.x as f32, size.y as f32)
+        });
         if object.kind == "trigger" {
             sprite.color = Color::srgba(1., 0.5, 0.1, 0.7);
         }
@@ -482,10 +522,8 @@ fn animate(
         ),
     >,
     mut clear: ResMut<ClearColor>,
-    mut trail: ResMut<Trail>,
 ) {
     if game.clear_trail {
-        trail.0.clear();
         game.clear_trail = false;
     }
     let Ok(window) = windows.single() else {
@@ -501,6 +539,7 @@ fn animate(
     let mut ground_color = Color::srgb(0.02, 0.07, 0.4);
     let mut bg_color = Color::srgb(0.1, 0.2, 0.7);
     let mut show_ceiling = false;
+    let mut ceiling_y = CEILING as f32;
     let mut level_elapsed = 0.;
     if editing {
         if let Some(e) = &game.editor {
@@ -531,10 +570,11 @@ fn animate(
         };
         let width = constants::VIEWPORT_HEIGHT as f32 * window.width() / window.height();
         camera_pos = Vec2::new(
-            pos.x as f32 + width * (0.5 - constants::POSITION_ON_SCENE_COEF) as f32,
-            constants::VIEWPORT_HEIGHT as f32 / 2. + sim.state.camera_y as f32,
+            pos.x as f32 + width / 2. - constants::PLAYER_SCREEN_X as f32,
+            constants::GAME_CAMERA_Y as f32 + sim.state.camera_y as f32,
         );
         floor = sim.state.floor as f32;
+        ceiling_y = sim.state.ceiling as f32;
         ground_color = rgba(sim.state.ground.current);
         bg_color = rgba(sim.state.background.current);
         show_ceiling = matches!(
@@ -542,7 +582,8 @@ fn animate(
             PlayerMode::Ship | PlayerMode::Wave | PlayerMode::Ball | PlayerMode::Spider
         ) || p.gravity > 0.;
         for (mut transform, mut sprite, mut visibility) in &mut players {
-            transform.rotation = Quat::from_rotation_z(p.rotation.to_radians() as f32);
+            let angle = p.rotation - if p.mode == PlayerMode::Wave { 90. } else { 0. };
+            transform.rotation = Quat::from_rotation_z(angle.to_radians() as f32);
             let offset = if p.mode == PlayerMode::Ship {
                 transform.rotation * Vec3::new(0., -11., 0.)
             } else {
@@ -551,6 +592,10 @@ fn animate(
             transform.translation = Vec3::new(pos.x as f32, pos.y as f32, depth::PLAYER) + offset;
             sprite.custom_size = Some(if p.mode == PlayerMode::Ship {
                 Vec2::new(98., 58.)
+            } else if p.mode == PlayerMode::Wave {
+                // This asset points up. Preserve its aspect ratio independently
+                // of the native 10x10 collision box.
+                Vec2::new(82., 102.) * (80. / 102.)
             } else {
                 Vec2::new(p.mode.size().x as f32, p.mode.size().y as f32)
             });
@@ -563,26 +608,16 @@ fn animate(
                 _ => Handle::default(),
             };
             sprite.color = mode_color(p.mode);
+            sprite.flip_y = p.gravity > 0.
+                && matches!(
+                    p.mode,
+                    PlayerMode::Ship | PlayerMode::Robot | PlayerMode::Spider
+                );
             *visibility = if matches!(sim.status, Status::Dead(_)) {
                 Visibility::Hidden
             } else {
                 Visibility::Visible
             };
-        }
-        if p.mode == PlayerMode::Wave && sim.status == Status::Running {
-            let point = Vec2::new(pos.x as f32, pos.y as f32);
-            if trail
-                .0
-                .back()
-                .is_none_or(|last| last.distance_squared(point) > 9.)
-            {
-                if trail.0.len() == 300 {
-                    trail.0.pop_front();
-                }
-                trail.0.push_back(point);
-            }
-        } else {
-            trail.0.clear();
         }
     }
     if let Projection::Orthographic(ortho) = &mut *projection {
@@ -631,12 +666,61 @@ fn animate(
         if ceiling.is_some() {
             transform.translation.x = camera_pos.x;
             transform.translation.y = if show_ceiling {
-                CEILING as f32 + 150.
+                ceiling_y + 150.
             } else {
                 100000.
             };
             sprite.color = ground_color;
         }
+    }
+}
+fn update_wave_trail(
+    game: Res<Game>,
+    time: Res<Time<Fixed>>,
+    trail: Res<Trail>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut visuals: Query<&mut Visibility, With<WaveTrailVisual>>,
+) {
+    let visible = matches!(
+        game.screen,
+        Screen::Playing | Screen::Paused | Screen::Complete
+    ) && game
+        .simulation
+        .as_ref()
+        .is_some_and(|s| s.state.player.mode == PlayerMode::Wave);
+    for mut v in &mut visuals {
+        *v = if visible {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+    if !visible {
+        return;
+    }
+    let sim = game.simulation.as_ref().unwrap();
+    let p = &sim.state.player;
+    let interpolate = game.screen == Screen::Playing
+        && sim.status == Status::Running
+        && game.attempt.playing()
+        && !game.block_fixed_frame
+        && game.exit_dialog.is_none();
+    let alpha = if interpolate {
+        time.overstep_fraction_f64()
+    } else {
+        1.
+    };
+    let head = p.previous + (p.position - p.previous) * alpha;
+    let mut points: Vec<Vec2> = sim
+        .wave_trail
+        .iter()
+        .take_while(|p| p.x < head.x - 1e-6)
+        .copied()
+        .map(point)
+        .collect();
+    points.push(point(head));
+    if let Some(mut mesh) = meshes.get_mut(&trail.0) {
+        *mesh = super::wave::ribbon(&points, 6. * constants::GD_SCALE as f32);
     }
 }
 fn animate_menu(
@@ -665,10 +749,10 @@ fn animate_menu(
         {
             Some("Back On Track") => Color::srgb(0.75, 0.03, 0.6),
             Some("Polargeist") => Color::srgb(0.08, 0.65, 0.2),
-            _ => Color::srgb(0.05, 0.25, 0.95),
+            _ => Color::srgb(0., 0., 1.),
         }
     } else {
-        Color::hsl((230. + t * 5.).rem_euclid(360.), 0.85, 0.42)
+        Color::hsl((216. + t * 0.5).rem_euclid(360.), 1., 0.5)
     };
     clear.0 = color;
     let width = constants::VIEWPORT_HEIGHT as f32 * window.width() / window.height();
@@ -681,17 +765,22 @@ fn animate_menu(
                         crate::constants::BACKGROUND_SPEED,
                         MENU_TILE_WIDTH,
                     );
+                if game.screen == Screen::Levels {
+                    transform.translation.x = camera.translation.x;
+                }
+                sprite.color = color;
             }
             MenuVisual::Floor => {
                 transform.translation.x = camera.translation.x;
                 sprite.color = color;
             }
             MenuVisual::Pattern => {
+                sprite.color = color;
                 transform.translation.x = camera.translation.x
                     - scroll_phase(
                         t as f64,
                         crate::constants::MENU_GROUND_SPEED,
-                        GROUND_TILE_WIDTH,
+                        MENU_GROUND_TILE_WIDTH,
                     );
             }
             MenuVisual::Shade => {
@@ -720,7 +809,7 @@ fn rgba(c: [f32; 4]) -> Color {
 fn point(p: Point) -> Vec2 {
     Vec2::new(p.x as f32, p.y as f32)
 }
-fn draw_helpers(game: Res<Game>, mut gizmos: Gizmos, trail: Res<Trail>, windows: Query<&Window>) {
+fn draw_helpers(game: Res<Game>, mut gizmos: Gizmos, windows: Query<&Window>) {
     if game.screen == Screen::Editor
         && let Some(editor) = &game.editor
     {
@@ -777,9 +866,6 @@ fn draw_helpers(game: Res<Game>, mut gizmos: Gizmos, trail: Res<Trail>, windows:
                 }
             }
         }
-    }
-    for (a, b) in trail.0.iter().zip(trail.0.iter().skip(1)) {
-        gizmos.line_2d(*a, *b, Color::WHITE);
     }
     if matches!(
         game.screen,
@@ -906,13 +992,13 @@ fn sync_checkpoints(
     }
 }
 fn menu_jump(elapsed: f64) -> (f32, f32) {
-    let flight = 2. * crate::constants::JUMP / crate::constants::GRAVITY - crate::constants::DT;
+    let gravity = constants::quantize_velocity(constants::GRAVITY * constants::DT) / constants::DT;
+    let flight = 2. * crate::constants::JUMP / gravity - crate::constants::DT;
     let period = flight + constants::MENU_JUMP_PAUSE;
     let phase = elapsed.rem_euclid(period);
     let cycle = (elapsed / period).floor();
     let height = if phase < flight {
-        crate::constants::JUMP * phase
-            - crate::constants::GRAVITY * phase * (phase + crate::constants::DT) / 2.
+        crate::constants::JUMP * phase - gravity * phase * (phase + crate::constants::DT) / 2.
     } else {
         0.
     };
@@ -941,7 +1027,7 @@ mod tests {
         let mut sim =
             crate::simulation::Simulation::new(crate::level::Level::empty("Menu jump")).unwrap();
         let floor = sim.state.player.position.y;
-        for tick in 1..=100 {
+        for tick in 1..=110 {
             sim.tick(crate::simulation::TickInput {
                 pressed: tick == 1,
                 ..default()
@@ -1003,6 +1089,7 @@ mod tests {
         app.world_mut().entity_mut(player).add_child(rider);
         for (mode, image) in [
             (PlayerMode::Ship, 2),
+            (PlayerMode::Wave, 3),
             (PlayerMode::Ball, 4),
             (PlayerMode::Spider, 5),
             (PlayerMode::Cube, 0),
@@ -1029,6 +1116,16 @@ mod tests {
                 }
             );
             assert_eq!(app.world().get::<Sprite>(rider).unwrap().image, images[6]);
+            if mode == PlayerMode::Wave {
+                let sprite = app.world().get::<Sprite>(player).unwrap();
+                let size = sprite.custom_size.unwrap();
+                assert!((size.x / size.y - 82. / 102.).abs() < 1e-6);
+                let direction = app.world().get::<Transform>(player).unwrap().rotation * Vec3::Y;
+                assert!(
+                    direction.x > 0.99,
+                    "the upward source sprite must point right at zero heading"
+                );
+            }
         }
         {
             let mut game = app.world_mut().resource_mut::<Game>();
@@ -1204,7 +1301,7 @@ mod tests {
             (app.world().get::<Transform>(floor).unwrap().translation.x
                 - app.world().get::<Transform>(camera).unwrap().translation.x
                 - floor_start
-                + 90.)
+                + (constants::SPEED * 0.1) as f32)
                 .abs()
                 < 0.01
         );
