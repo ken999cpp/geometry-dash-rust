@@ -1,0 +1,254 @@
+{
+  "GJ_logo_001.png": [
+    429.0,
+    52.0
+  ],
+  "GJ_playBtn_001.png": [
+    109.5,
+    109.5
+  ],
+  "GJ_garageBtn_001.png": [
+    70.0,
+    70.0
+  ],
+  "GJ_creatorBtn_001.png": [
+    70.0,
+    70.0
+  ],
+  "GJ_optionsBtn_001.png": [
+    50.5,
+    53.75
+  ],
+  "GJ_statsBtn_001.png": [
+    50.5,
+    53.75
+  ],
+  "GJ_achBtn_001.png": [
+    51.0,
+    54.0
+  ],
+  "GJ_moreGamesBtn_001.png": [
+    82.5,
+    70.0
+  ],
+  "GJ_musicLibraryBtn_001.png": [
+    51.0,
+    54.0
+  ],
+  "GJ_closeBtn_001.png": [
+    46.0,
+    47.5
+  ],
+  "GJ_dailyRewardBtn_001.png": [
+    48.5,
+    46.0
+  ],
+  "GJ_dailyBtn_001.png": [
+    104.5,
+    104.5
+  ],
+  "GJ_newsBtn_001.png": [
+    81.25,
+    69.75
+  ],
+  "GJ_ngBtn_001.png": [
+    51.0,
+    54.0
+  ],
+  "gj_fbIcon_001.png": [
+    31.5,
+    31.5
+  ],
+  "gj_twIcon_001.png": [
+    32.0,
+    30.5
+  ],
+  "gj_ytIcon_001.png": [
+    31.5,
+    31.5
+  ],
+  "gj_twitchIcon_001.png": [
+    32.0,
+    30.25
+  ],
+  "gj_discordIcon_001.png": [
+    32.0,
+    30.5
+  ],
+  "robtoplogo_small.png": [
+    100.0,
+    28.0
+  ],
+  "GJ_backBtn_001.png": [
+    49.5,
+    51.0
+  ],
+  "GJ_arrow_01_001.png": [
+    32.5,
+    40.5
+  ],
+  "GJ_arrow_03_001.png": [
+    32.5,
+    40.0
+  ],
+  "GJ_topBar_001.png": [
+    306.5,
+    36.0
+  ],
+  "GJ_sideArt_001.png": [
+    71.5,
+    70.5
+  ],
+  "difficulty_01_btn_001.png": [
+    30.0,
+    43.25
+  ],
+  "difficulty_02_btn_001.png": [
+    43.0,
+    43.25
+  ],
+  "difficulty_03_btn_001.png": [
+    30.0,
+    42.5
+  ],
+  "GJ_starsIcon_001.png": [
+    23.5,
+    24.25
+  ],
+  "secretCoinUI_001.png": [
+    43.75,
+    43.5
+  ],
+  "secretCoinUI2_001.png": [
+    44.0,
+    43.5
+  ],
+  "currencyOrbIcon_001.png": [
+    20.0,
+    18.5
+  ],
+  "GJ_infoIcon_001.png": [
+    23.25,
+    23.0
+  ],
+  "GJ_deleteBtn_001.png": [
+    46.0,
+    47.5
+  ],
+  "GJ_levelLeaderboardBtn_001.png": [
+    46.0,
+    47.5
+  ],
+  "GJ_editBtn_001.png": [
+    78.0,
+    81.5
+  ],
+  "GJ_playBtn2_001.png": [
+    78.5,
+    81.5
+  ],
+  "GJ_practiceBtn_001.png": [
+    61.5,
+    64.5
+  ],
+  "GJ_normalBtn_001.png": [
+    61.5,
+    64.5
+  ],
+  "GJ_menuBtn_001.png": [
+    61.5,
+    64.5
+  ],
+  "GJ_replayBtn_001.png": [
+    61.5,
+    64.5
+  ],
+  "GJ_audioOnBtn_001.png": [
+    38.0,
+    39.5
+  ],
+  "GJ_musicOnBtn_001.png": [
+    38.0,
+    39.5
+  ],
+  "GJ_sfxIcon_001.png": [
+    14.5,
+    14.0
+  ],
+  "GJ_musicIcon_001.png": [
+    24.5,
+    26.0
+  ],
+  "GJ_pauseBtn_001.png": [
+    38.0,
+    39.5
+  ],
+  "GJ_checkpointBtn_001.png": [
+    73.0,
+    48.0
+  ],
+  "GJ_removeCheckBtn_001.png": [
+    46.5,
+    48.0
+  ],
+  "GJ_checkOn_001.png": [
+    35.0,
+    34.5
+  ],
+  "GJ_checkOff_001.png": [
+    31.0,
+    31.0
+  ],
+  "hideBtn_001.png": [
+    27.0,
+    18.5
+  ],
+  "edit_eStartPosBtn_001.png": [
+    36.0,
+    22.5
+  ],
+  "diffIcon_01_btn_001.png": [
+    30.0,
+    30.0
+  ],
+  "diffIcon_02_btn_001.png": [
+    30.0,
+    30.0
+  ],
+  "diffIcon_03_btn_001.png": [
+    30.0,
+    30.0
+  ],
+  "secretCoin_b_01_001.png": [
+    39.5,
+    39.5
+  ],
+  "GJ_arrow_02_001.png": [
+    32.5,
+    40.0
+  ],
+  "navArrowBtn_001.png": [
+    26.5,
+    65.5
+  ],
+  "sideBtn_death_001.png": [
+    27.0,
+    28.5
+  ],
+  "sideBtn_hide_001.png": [
+    27.0,
+    28.5
+  ],
+  "sideBtn_quests_001.png": [
+    27.0,
+    28.5
+  ],
+  "gjCoinUI_01_off_001.png": [
+    23.5,
+    23.25
+  ],
+  "gjCoinUI_02_off_001.png": [
+    23.5,
+    23.5
+  ]
+}
