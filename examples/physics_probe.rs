@@ -14,6 +14,38 @@ fn empty_track() -> Level {
 }
 
 fn main() {
+    if std::env::args().any(|a| a == "--stereo") {
+        let level = Level::load(std::path::Path::new("levels/Stereo Madness.json")).unwrap();
+        let mut sim = Simulation::new(level).unwrap();
+        let x = std::env::args()
+            .find_map(|a| a.strip_prefix("--x=").and_then(|v| v.parse::<f64>().ok()))
+            .unwrap_or(11950.);
+        let y = std::env::args()
+            .find_map(|a| a.strip_prefix("--y=").and_then(|v| v.parse::<f64>().ok()))
+            .unwrap_or(1000.);
+        sim.state.player.position = geometry_dash::geometry::Point::new(x, y);
+        sim.state.player.previous = sim.state.player.position;
+        sim.state.player.grounded = std::env::args().any(|a| a == "--grounded");
+        sim.state.player.velocity.y = if sim.state.player.grounded { 0. } else { -800. };
+        for _ in 0..1200 {
+            let was = sim.state.player.grounded;
+            sim.tick(TickInput {
+                held: true,
+                ..Default::default()
+            });
+            let p = &sim.state.player;
+            if p.grounded != was || sim.status != geometry_dash::simulation::Status::Running {
+                println!(
+                    "x={:.2} y={:.2} vy={:.2} grounded={} status={:?}",
+                    p.position.x, p.position.y, p.velocity.y, p.grounded, sim.status
+                );
+            }
+            if sim.status != geometry_dash::simulation::Status::Running || p.position.x > 13080. {
+                break;
+            }
+        }
+        return;
+    }
     println!(
         "Hz={} speed={} gravity={} jump={} cube_rotation={} deg/s",
         constants::HZ,
