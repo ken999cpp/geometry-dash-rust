@@ -8,6 +8,7 @@ use bevy::{
         mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll},
     },
     prelude::*,
+    window::{CursorOptions, PrimaryWindow},
 };
 
 pub struct InputPlugin;
@@ -16,9 +17,27 @@ impl Plugin for InputPlugin {
         app.add_systems(
             RunFixedMainLoop,
             capture.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
-        );
+        )
+        .add_systems(PostUpdate, sync_cursor_visibility);
     }
 }
+
+fn sync_cursor_visibility(
+    game: Res<Game>,
+    mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
+) {
+    for (window, mut cursor) in &mut windows {
+        let visible = game.screen != Screen::Playing
+            || !window.focused
+            || game.settings_open
+            || game.exit_dialog.is_some()
+            || game.prompt.is_some();
+        if cursor.visible != visible {
+            cursor.visible = visible;
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn capture(
     mut game: ResMut<Game>,
@@ -60,8 +79,15 @@ fn capture(
         events.clear();
         return;
     }
-    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
-    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    // A short chord can be pressed and released between rendered frames.
+    let ctrl = keys.pressed(KeyCode::ControlLeft)
+        || keys.pressed(KeyCode::ControlRight)
+        || keys.just_released(KeyCode::ControlLeft)
+        || keys.just_released(KeyCode::ControlRight);
+    let shift = keys.pressed(KeyCode::ShiftLeft)
+        || keys.pressed(KeyCode::ShiftRight)
+        || keys.just_released(KeyCode::ShiftLeft)
+        || keys.just_released(KeyCode::ShiftRight);
     if game.prompt.is_some() {
         if ctrl && keys.just_pressed(KeyCode::KeyA) {
             game.prompt.as_mut().unwrap().value.clear();
@@ -95,7 +121,29 @@ fn capture(
         }
         return;
     }
+    if game.menu_panel.is_some() {
+        if keys.just_pressed(KeyCode::KeyE)
+            && matches!(game.screen, Screen::Levels | Screen::Paused)
+        {
+            game.edit();
+        }
+        game.input = Default::default();
+        events.clear();
+        return;
+    }
+    if game.pause_hidden {
+        if mouse.just_pressed(MouseButton::Left) {
+            game.pause_hidden = false;
+            game.ui_dirty = true;
+        }
+        events.clear();
+        return;
+    }
     events.clear();
+    if game.screen == Screen::Paused && keys.just_pressed(KeyCode::KeyE) {
+        game.edit();
+        return;
+    }
     if keys.just_pressed(KeyCode::KeyP) {
         match game.screen {
             Screen::Playing => game.screen(Screen::Paused),
@@ -105,6 +153,10 @@ fn capture(
         return;
     }
     if game.screen == Screen::Levels {
+        if keys.just_pressed(KeyCode::KeyE) {
+            game.edit();
+            return;
+        }
         if keys.just_pressed(KeyCode::ArrowLeft) {
             game.browse_level(-1);
         }
@@ -131,9 +183,8 @@ fn capture(
         // The HUD pause control must not also send a jump to the fixed loop.
         if mouse.just_pressed(MouseButton::Left)
             && window.cursor_position().is_some_and(|p| {
-                p.x >= window.width() - 62.
-                    && p.x <= window.width() - 18.
-                    && (14. ..=58.).contains(&p.y)
+                let scale = window.height() / 320.;
+                p.x >= window.width() - 24. * scale && p.y <= 24. * scale
             })
         {
             game.screen(Screen::Paused);
@@ -204,6 +255,12 @@ fn capture(
         return;
     };
     let old_revision = editor.revision;
+    if keys.just_pressed(KeyCode::KeyM) {
+        editor.cycle_start_setting(false);
+    }
+    if keys.just_pressed(KeyCode::KeyV) {
+        editor.cycle_start_setting(true);
+    }
     if ctrl && keys.just_pressed(KeyCode::KeyZ) {
         if shift {
             editor.redo();
