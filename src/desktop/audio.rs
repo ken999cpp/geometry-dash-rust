@@ -116,7 +116,12 @@ fn sync_audio(
     if let Some(sfx) = game.sfx.take() {
         commands.spawn((
             AudioPlayer::new(server.load(format!("sfx/{sfx}.ogg"))),
-            PlaybackSettings::DESPAWN,
+            PlaybackSettings {
+                volume: Volume::Linear(
+                    game.profile.settings.volume(MusicChannel::Sfx) as f32 / 100.,
+                ),
+                ..PlaybackSettings::DESPAWN
+            },
         ));
     }
 }
