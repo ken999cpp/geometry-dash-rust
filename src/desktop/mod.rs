@@ -2,11 +2,14 @@ mod attempt;
 mod audio;
 mod editor_icons;
 mod editor_ui;
+mod frame_rate;
 mod input;
 mod menu;
+mod native_menu;
 mod render;
 mod settings;
 mod ui;
+mod wave;
 
 use crate::{
     editor::Editor,
@@ -88,10 +91,13 @@ pub struct Game {
     pub exit_dialog: Option<ExitTarget>,
     pub exit_requested: bool,
     pub settings_open: bool,
+    display_rate: frame_rate::DisplayRate,
     suppress_action_until_release: bool,
     attempt: attempt::AttemptFlow,
     block_fixed_frame: bool,
     clear_trail: bool,
+    menu_panel: Option<&'static str>,
+    pause_hidden: bool,
 }
 impl Game {
     fn new(bundle: PathBuf) -> Self {
@@ -126,10 +132,13 @@ impl Game {
             exit_dialog: None,
             exit_requested: false,
             settings_open: false,
+            display_rate: Default::default(),
             suppress_action_until_release: false,
             attempt: Default::default(),
             block_fixed_frame: false,
             clear_trail: false,
+            menu_panel: None,
+            pause_hidden: false,
         };
         g.refresh();
         g
@@ -189,12 +198,23 @@ impl Game {
         };
         let same_scene = is_level(self.screen) && is_level(screen);
         self.screen = screen;
+        self.pause_hidden = false;
+        self.menu_panel = None;
         self.input = TickInput::default();
         self.ui_dirty = true;
         self.scene_dirty |= !same_scene;
         self.confirm_exit = false;
     }
     pub fn escape(&mut self) {
+        if self.pause_hidden {
+            self.pause_hidden = false;
+            self.ui_dirty = true;
+            return;
+        }
+        if self.menu_panel.take().is_some() {
+            self.ui_dirty = true;
+            return;
+        }
         if self.exit_dialog.is_some() {
             self.cancel_exit();
             return;
@@ -322,11 +342,31 @@ impl Game {
             return;
         };
         match Simulation::new(level) {
-            Ok(sim) => {
+            Ok(mut sim) => {
+                if testing && let Some(editor) = &self.editor {
+                    let marker = editor
+                        .selected
+                        .filter(|&id| editor.level.objects[id].kind == "start_pos")
+                        .or_else(|| {
+                            editor
+                                .level
+                                .objects
+                                .iter()
+                                .rposition(|o| o.kind == "start_pos")
+                        });
+                    if let Some(marker) = marker
+                        && let Err(error) = sim.start_at(marker)
+                    {
+                        self.status = error;
+                        self.ui_dirty = true;
+                        return;
+                    }
+                }
+                let offset = sim.state.elapsed;
                 self.testing = testing;
                 self.simulation = Some(sim);
                 self.screen(Screen::Loading);
-                self.pending_seek = Some(0.);
+                self.pending_seek = Some(offset);
                 self.sfx = Some("playSound");
                 if !testing {
                     self.add_attempt();
@@ -639,6 +679,7 @@ pub fn run() {
                 })
                 .set(WindowPlugin {
                     primary_window: Some(Window {
+                        present_mode: bevy::window::PresentMode::AutoNoVsync,
                         title: "Geometry Dash · Rust".into(),
                         resolution: (1280, 720).into(),
                         resize_constraints: bevy::window::WindowResizeConstraints {
@@ -658,6 +699,7 @@ pub fn run() {
             (FrameSet::World, FrameSet::Interface, FrameSet::Audio).chain(),
         )
         .add_plugins((
+            frame_rate::FrameRatePlugin,
             input::InputPlugin,
             render::PresentationPlugin,
             ui::InterfacePlugin,
@@ -786,5 +828,43 @@ mod tests {
             game.update_progress();
             assert_eq!(game.profile.total_stars(), expected);
         }
+    }
+    #[test]
+    fn editor_playtest_uses_start_pos_and_music_offset_without_awarding_progress() {
+        let mut game = Game::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+        game.root = std::env::temp_dir().join(format!("gd-start-pos-{}", std::process::id()));
+        let root = game.root.clone();
+        game.profile = Profile::default();
+        let mut level = Level::empty("Start position test");
+        level
+            .objects
+            .push(crate::level::LevelObject::new("block", 20000., 420.));
+        level
+            .objects
+            .push(crate::level::LevelObject::new("ship_portal", 1000., 738.));
+        level
+            .objects
+            .push(crate::level::LevelObject::new("start_pos", 5000., 820.));
+        game.editor = Some(Editor::new(level, None));
+        game.start(true);
+        let state = &game.simulation.as_ref().unwrap().state;
+        assert_eq!(state.player.mode, crate::simulation::PlayerMode::Ship);
+        assert!(state.player.position.x > 5000.);
+        assert_eq!(game.pending_seek, Some(state.elapsed));
+        game.update_progress();
+        assert!(!game.profile.levels.contains_key("Start position test"));
+        let track = game.editor.as_ref().unwrap().level.clone();
+        game.catalog = vec![CatalogEntry {
+            level: track,
+            path: PathBuf::new(),
+        }];
+        game.selected = 0;
+        game.start(false);
+        assert_eq!(
+            game.simulation.as_ref().unwrap().state.player.position.x,
+            40.
+        );
+        assert_eq!(game.pending_seek, Some(0.));
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
