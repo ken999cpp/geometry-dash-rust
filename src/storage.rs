@@ -39,7 +39,10 @@ pub struct Progress {
 pub enum MusicChannel {
     Menu,
     Level,
+    Sfx,
 }
+pub const FPS_LIMITS: [u32; 4] = [60, 120, 144, 240];
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct Settings {
@@ -47,6 +50,8 @@ pub struct Settings {
     pub hide_checkpoint_buttons: bool,
     pub menu_music_volume: u8,
     pub level_music_volume: u8,
+    pub fps_limit: u32,
+    pub sfx_volume: u8,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -55,14 +60,25 @@ impl Default for Settings {
             hide_checkpoint_buttons: false,
             menu_music_volume: 100,
             level_music_volume: 100,
+            fps_limit: 60,
+            sfx_volume: 100,
         }
     }
 }
 impl Settings {
+    pub fn fps_limit(&self) -> u32 {
+        FPS_LIMITS
+            .into_iter()
+            .rev()
+            .find(|&fps| fps <= self.fps_limit)
+            .unwrap_or(60)
+    }
+
     pub fn volume(&self, channel: MusicChannel) -> u8 {
         match channel {
             MusicChannel::Menu => self.menu_music_volume,
             MusicChannel::Level => self.level_music_volume,
+            MusicChannel::Sfx => self.sfx_volume,
         }
         .min(100)
     }
@@ -70,6 +86,7 @@ impl Settings {
         let volume = match channel {
             MusicChannel::Menu => &mut self.menu_music_volume,
             MusicChannel::Level => &mut self.level_music_volume,
+            MusicChannel::Sfx => &mut self.sfx_volume,
         };
         let value = value.min(100);
         let changed = *volume != value;
@@ -94,11 +111,12 @@ impl Profile {
         }
         let mut profile: Self = serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
-        for channel in [MusicChannel::Menu, MusicChannel::Level] {
+        for channel in [MusicChannel::Menu, MusicChannel::Level, MusicChannel::Sfx] {
             profile
                 .settings
                 .set_volume(channel, profile.settings.volume(channel));
         }
+        profile.settings.fps_limit = profile.settings.fps_limit();
         Ok(profile)
     }
     pub fn save(&self, root: &Path) -> Result<(), String> {
