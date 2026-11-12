@@ -12,6 +12,112 @@ fn level() -> Level {
     l.objects.push(LevelObject::new("block", 100000., GROUND));
     l
 }
+
+#[test]
+fn stereo_madness_ship_start_uses_the_portal_corridor_and_keeps_blocks_fixed() {
+    let mut track =
+        Level::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("levels/Stereo Madness.json"))
+            .unwrap();
+    let blocks = track.objects.clone();
+    track
+        .objects
+        .push(LevelObject::new("start_pos", 23000., 820.));
+    let marker = track.objects.len() - 1;
+    let mut sim = Simulation::new(track).unwrap();
+    sim.start_at(marker).unwrap();
+    assert_eq!(sim.state.player.mode, PlayerMode::Ship);
+    assert_eq!(sim.state.floor, 420.);
+    assert_eq!(sim.state.ceiling, 1220.);
+    assert!((geometry_dash::constants::GAME_CAMERA_Y + sim.state.camera_y - 820.).abs() < 1e-8);
+    assert!((sim.state.elapsed - (23000. / geometry_dash::constants::SPEED)).abs() < 1e-8);
+    let start = sim.state.clone();
+    run(
+        &mut sim,
+        15,
+        TickInput {
+            held: true,
+            ..Default::default()
+        },
+    );
+    assert_eq!(&sim.level.objects[..marker], blocks.as_slice());
+    sim.restart(false);
+    assert_eq!(sim.state, start);
+    let normal = Simulation::new(sim.level.clone()).unwrap();
+    assert_eq!(normal.state.player.mode, PlayerMode::Cube);
+    assert_eq!(normal.progress(), 0);
+}
+
+#[test]
+fn same_mode_portal_changes_corridor_without_resetting_momentum() {
+    let mut track = level();
+    track
+        .objects
+        .push(LevelObject::new("ship_portal", 0., 1140.));
+    let mut sim = Simulation::new(track).unwrap();
+    let mut reference = Simulation::new(level()).unwrap();
+    sim.state.player.mode = PlayerMode::Ship;
+    sim.state.player.position.y = 1260.;
+    sim.state.player.previous = sim.state.player.position;
+    sim.state.player.grounded = false;
+    sim.state.ceiling = 1800.;
+    reference.state = sim.state.clone();
+    sim.tick(Default::default());
+    reference.tick(Default::default());
+    assert_eq!(sim.state.corridor_floor, 820.);
+    assert_eq!(sim.state.ceiling, 1620.);
+    assert_eq!(sim.state.player.velocity, reference.state.player.velocity);
+}
+
+#[test]
+fn start_position_restores_trigger_time_and_explicit_mode_gravity() {
+    let mut track = level();
+    let mut trigger = LevelObject::new("trigger", 100., 0.);
+    trigger.trigger_type = Some("background_color_change".into());
+    trigger
+        .trigger_params
+        .insert("color".into(), "#ff0000".into());
+    trigger.trigger_params.insert("duration".into(), 2.into());
+    track.objects.push(trigger);
+    let mut marker = LevelObject::new("start_pos", 950., 700.);
+    marker.extra.insert("mode".into(), "wave".into());
+    marker.extra.insert("gravity".into(), "reverse".into());
+    track.objects.push(marker);
+    let mut sim = Simulation::new(track).unwrap();
+    sim.start_at(2).unwrap();
+    assert_eq!(sim.state.player.mode, PlayerMode::Wave);
+    assert_eq!(sim.state.player.gravity, 1.);
+    assert!(sim.state.active[1]);
+    assert!(sim.state.background.current[0] > 0.12 && sim.state.background.current[0] < 1.);
+    assert_eq!(sim.state.player.previous, sim.state.player.position);
+    let saved = sim.state.clone();
+    sim.tick(Default::default());
+    sim.restart(false);
+    assert_eq!(sim.state, saved);
+}
+
+#[test]
+fn start_markers_are_editable_and_do_not_extend_level_length() {
+    let mut editor = Editor::new(level(), None);
+    let length = editor.level.length();
+    editor.choose_tool(18);
+    editor.place(Point::new(200000., 800.));
+    assert_eq!(editor.level.length(), length);
+    assert_eq!(editor.level.objects.last().unwrap().kind, "start_pos");
+    editor.cycle_start_setting(false);
+    editor.cycle_start_setting(true);
+    let object = editor.level.objects.last().unwrap();
+    assert_eq!(object.extra["mode"], "cube");
+    assert_eq!(object.extra["gravity"], "normal");
+    editor.undo();
+    assert_eq!(
+        editor.level.objects.last().unwrap().extra["gravity"],
+        "auto"
+    );
+    editor.redo();
+    let restored: Level =
+        serde_json::from_slice(&serde_json::to_vec(&editor.level).unwrap()).unwrap();
+    assert_eq!(restored, editor.level);
+}
 fn run(sim: &mut Simulation, ticks: usize, input: TickInput) {
     for _ in 0..ticks {
         sim.tick(input);
@@ -100,17 +206,19 @@ fn cube_hold_repeats_jump_on_landing() {
 fn ship_thrust_and_speed_caps() {
     let mut s = Simulation::new(level()).unwrap();
     s.state.player.mode = PlayerMode::Ship;
-    s.state.player.position.y = 800.;
+    s.state.player.position.y = 500.;
     s.state.player.grounded = false;
     run(
         &mut s,
-        60,
+        120,
         TickInput {
             held: true,
             ..Default::default()
         },
     );
-    assert!((s.state.player.velocity.y - 500.).abs() < 1e-9);
+    assert!(
+        (s.state.player.velocity.y - geometry_dash::constants::SHIP_MAX_RISE_SPEED).abs() < 1e-9
+    );
     assert!(s.state.player.velocity.y <= geometry_dash::constants::SHIP_MAX_RISE_SPEED);
     run(&mut s, 150, TickInput::default());
     assert!(s.state.player.velocity.y >= -geometry_dash::constants::SHIP_MAX_FALL_SPEED);
@@ -132,6 +240,254 @@ fn wave_has_constant_diagonal_speed() {
     assert_eq!(v, s.state.player.velocity.y);
     s.tick(TickInput::default());
     assert_eq!(v, -s.state.player.velocity.y);
+}
+
+#[test]
+fn stereo_madness_18_percent_hold_lands_on_the_leading_edge_and_continues() {
+    let track =
+        Level::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("levels/Stereo Madness.json"))
+            .unwrap();
+    let mut sim = Simulation::new(track).unwrap();
+    // Press while falling toward the lower platform, then keep holding through
+    // the landing and both upper platforms. The old center-only collision
+    // missed the first upper landing before x=12240.
+    sim.state.player.position = Point::new(11950., 1000.);
+    sim.state.player.previous = sim.state.player.position;
+    sim.state.player.velocity.y = -800.;
+    sim.state.player.grounded = false;
+    let mut landings = Vec::new();
+    for _ in 0..500 {
+        let was = sim.state.player.grounded;
+        sim.tick(TickInput {
+            held: true,
+            ..Default::default()
+        });
+        assert_eq!(
+            sim.status,
+            Status::Running,
+            "failed at {:?}",
+            sim.state.player.position
+        );
+        if !was && sim.state.player.grounded && sim.state.player.position.y > 1100. {
+            landings.push(sim.state.player.position);
+            if landings.len() == 2 {
+                break;
+            }
+        }
+    }
+    assert_eq!(landings.len(), 2);
+    assert!(
+        landings[0].x < 12240.,
+        "the leading edge must support the landing"
+    );
+    assert!((12840. ..13080.).contains(&landings[1].x));
+}
+
+#[test]
+fn pads_and_yellow_orbs_use_native_impulses_in_every_mode_and_gravity() {
+    use geometry_dash::constants::GD_VELOCITY_UNIT;
+    for mode in PlayerMode::ALL {
+        for gravity in [-1., 1.] {
+            for kind in ["jump_pad", "yellow_orb"] {
+                let mut track = level();
+                track.objects.push(LevelObject::new(
+                    kind,
+                    if kind == "jump_pad" { 5. } else { 0. },
+                    if kind == "jump_pad" { 700. } else { 660. },
+                ));
+                let mut sim = Simulation::new(track).unwrap();
+                let p = &mut sim.state.player;
+                p.mode = mode;
+                p.gravity = gravity;
+                p.position = Point::new(40., 700.);
+                p.previous = p.position;
+                p.grounded = false;
+                sim.tick(TickInput {
+                    held: true,
+                    pressed: true,
+                    ..Default::default()
+                });
+                if mode == PlayerMode::Wave && kind == "jump_pad" {
+                    assert!(!sim.state.active[1]);
+                    continue;
+                }
+                let native = if kind == "jump_pad" {
+                    if matches!(mode, PlayerMode::Ball | PlayerMode::Spider) {
+                        9.6
+                    } else {
+                        16.
+                    }
+                } else {
+                    match mode {
+                        PlayerMode::Ball | PlayerMode::Spider => 7.826,
+                        PlayerMode::Robot => 10.062,
+                        _ => 11.18,
+                    }
+                };
+                assert!(sim.state.active[1], "{mode:?} {kind}");
+                assert!(
+                    (sim.state.player.velocity.y + gravity * native * GD_VELOCITY_UNIT).abs()
+                        < 1e-8,
+                    "{mode:?} {kind}"
+                );
+                assert!(sim.state.player.robot_boost_invalidated);
+            }
+        }
+    }
+}
+
+#[test]
+fn every_mode_portal_preserves_the_native_fraction_of_momentum() {
+    for old in PlayerMode::ALL {
+        for new in PlayerMode::ALL {
+            let mut track = level();
+            track.objects.push(LevelObject::new(
+                &format!("{}_portal", new.name()),
+                -10.,
+                580.,
+            ));
+            let mut sim = Simulation::new(track).unwrap();
+            let mut baseline = Simulation::new(level()).unwrap();
+            let p = &mut sim.state.player;
+            p.mode = old;
+            p.position.y = 700.;
+            p.previous = p.position;
+            p.velocity.y = 300.;
+            p.grounded = false;
+            p.rotation = 31.;
+            baseline.state.player = p.clone();
+            baseline.tick(Default::default());
+            sim.tick(Default::default());
+            let mut expected = baseline.state.player.velocity.y;
+            if old != new {
+                if matches!(old, PlayerMode::Ship | PlayerMode::Wave) {
+                    expected *= 0.5;
+                }
+                if matches!(new, PlayerMode::Ship | PlayerMode::Wave) {
+                    expected *= 0.5;
+                }
+            }
+            assert_eq!(sim.state.player.mode, new);
+            assert!(
+                (sim.state.player.velocity.y - expected).abs() < 1e-8,
+                "{old:?} -> {new:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn gravity_portal_halves_momentum_only_when_gravity_changes() {
+    for (kind, expected_factor, gravity) in [
+        ("ReverseGravityPortal", 0.5, 1.),
+        ("NormalGravityPortal", 1., -1.),
+    ] {
+        let mut track = level();
+        track.objects.push(LevelObject::new(kind, 0., 580.));
+        let mut sim = Simulation::new(track).unwrap();
+        sim.state.player.position.y = 700.;
+        sim.state.player.previous = sim.state.player.position;
+        sim.state.player.velocity.y = 900.;
+        sim.state.player.grounded = false;
+        let mut baseline = Simulation::new(level()).unwrap();
+        baseline.state.player = sim.state.player.clone();
+        baseline.tick(Default::default());
+        sim.tick(Default::default());
+        assert_eq!(sim.state.player.gravity, gravity);
+        assert_eq!(
+            sim.state.player.velocity.y,
+            baseline.state.player.velocity.y * expected_factor
+        );
+    }
+}
+
+#[test]
+fn ground_action_modes_buffer_a_fresh_airborne_press_until_landing() {
+    for mode in [PlayerMode::Robot, PlayerMode::Ball, PlayerMode::Spider] {
+        let mut sim = Simulation::new(level()).unwrap();
+        let p = &mut sim.state.player;
+        p.mode = mode;
+        p.position.y = 490.;
+        p.previous = p.position;
+        p.grounded = false;
+        p.velocity.y = -100.;
+        sim.tick(TickInput {
+            held: true,
+            pressed: true,
+            ..Default::default()
+        });
+        for _ in 0..100 {
+            let had_landed = sim.state.player.grounded;
+            sim.tick(TickInput {
+                held: true,
+                ..Default::default()
+            });
+            if had_landed {
+                break;
+            }
+        }
+        assert!(!sim.state.player.orb_armed, "{mode:?}");
+        if mode == PlayerMode::Robot {
+            assert!(sim.state.player.velocity.y > 0.);
+        } else {
+            assert_eq!(sim.state.player.gravity, 1.);
+        }
+    }
+}
+
+#[test]
+fn robot_release_permanently_ends_that_jumps_boost() {
+    let mut sim = Simulation::new(level()).unwrap();
+    sim.state.player.mode = PlayerMode::Robot;
+    sim.tick(TickInput {
+        held: true,
+        pressed: true,
+        ..Default::default()
+    });
+    run(
+        &mut sim,
+        5,
+        TickInput {
+            held: true,
+            ..Default::default()
+        },
+    );
+    sim.tick(Default::default());
+    let before = sim.state.player.velocity.y;
+    sim.tick(TickInput {
+        held: true,
+        ..Default::default()
+    });
+    assert!(sim.state.player.robot_boost_invalidated);
+    assert!(sim.state.player.velocity.y < before);
+}
+
+#[test]
+fn wave_trace_retains_subframe_spam_corners_and_boundary_intersections() {
+    let mut sim = Simulation::new(level()).unwrap();
+    sim.state.player.mode = PlayerMode::Wave;
+    sim.state.player.position.y = 700.;
+    sim.state.player.previous = sim.state.player.position;
+    for i in 0..120 {
+        sim.tick(TickInput {
+            held: i % 2 == 0,
+            ..Default::default()
+        });
+    }
+    assert_eq!(sim.wave_trail.len(), 121);
+    for (a, b) in sim.wave_trail.iter().zip(sim.wave_trail.iter().skip(1)) {
+        assert!(((b.x - a.x) - (b.y - a.y).abs()).abs() < 1e-7);
+    }
+    run(&mut sim, 240, TickInput::default());
+    for (a, b) in sim.wave_trail.iter().zip(sim.wave_trail.iter().skip(1)) {
+        let d = *b - *a;
+        assert!(d.y.abs() < 1e-7 || (d.x - d.y.abs()).abs() < 1e-7);
+    }
+    assert!(sim.state.player.rotation.abs() < 0.03);
+    sim.practice = true;
+    sim.checkpoint();
+    sim.restart(true);
+    assert!(sim.wave_trail.is_empty());
 }
 #[test]
 fn robot_hold_increases_jump_height() {
@@ -190,7 +546,7 @@ fn spider_teleports_to_nearest_surface() {
         ..Default::default()
     });
     assert_eq!(s.state.player.gravity, 1.);
-    assert_eq!(s.state.player.position.y, 860.);
+    assert_eq!(s.state.player.position.y, 864.);
     assert!(s.state.player.grounded);
 }
 #[test]
@@ -546,6 +902,7 @@ fn old_profiles_gain_default_settings_and_completed_level_stars() {
     profile.settings.hide_checkpoint_buttons = true;
     profile.settings.set_volume(MusicChannel::Menu, 37);
     profile.settings.set_volume(MusicChannel::Level, 0);
+    profile.settings.fps_limit = 144;
     profile.save(&root).unwrap();
     let restored = Profile::load(&root).unwrap();
     assert_eq!(restored.settings, profile.settings);
@@ -556,16 +913,18 @@ fn old_profiles_gain_default_settings_and_completed_level_stars() {
     );
     assert_eq!(restored.total_stars(), 1);
     profile.settings.menu_music_volume = 250;
+    profile.settings.fps_limit = 999;
     profile.save(&root).unwrap();
     assert_eq!(
         Profile::load(&root).unwrap().settings.menu_music_volume,
         100
     );
+    assert_eq!(Profile::load(&root).unwrap().settings.fps_limit, 240);
     std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
-fn cube_jump_matches_the_current_cpp_profile_parameters() {
+fn cube_jump_matches_the_original_stereo_madness_capture() {
     let mut sim = Simulation::new(level()).unwrap();
     let origin = sim.state.player.position;
     sim.tick(TickInput {
@@ -579,10 +938,41 @@ fn cube_jump_matches_the_current_cpp_profile_parameters() {
         ticks += 1;
         apex = apex.max(sim.state.player.position.y);
     }
-    // The editable parameters currently match the C++ baseline, restored by the user.
-    assert_eq!(ticks, 93);
-    assert!((sim.state.player.position.x - origin.x - 348.75).abs() < 1e-6);
-    assert!((apex - origin.y - 177.2317708333).abs() < 1e-6);
+    assert_eq!(ticks, 103);
+    assert!((sim.state.player.position.x - origin.x - 356.5861236).abs() < 1e-6);
+    assert!((apex - origin.y - 170.2584).abs() < 1e-6);
+
+    // Measured from the user's Steam game on 2026-11-12. Screen height excluding
+    // the window border was 1042 px (320 native units). The first spike supplies
+    // a world-distance clock, independent of screenshot or input latency.
+    let px_per_unit = 1042. / geometry_dash::constants::VIEWPORT_HEIGHT;
+    let captured = [
+        (1444., 644.),
+        (1355.5, 548.5),
+        (1271., 523.),
+        (1195., 553.),
+        (1106., 654.),
+    ];
+    let mut replay = Simulation::new(level()).unwrap();
+    let mut previous = replay.state.player.position;
+    for (spike_x, screen_y) in captured {
+        let target_x = origin.x + (1494.85947157 - spike_x) / px_per_unit;
+        while replay.state.player.position.x < target_x {
+            previous = replay.state.player.position;
+            replay.tick(TickInput {
+                pressed: replay.state.tick == 0,
+                ..Default::default()
+            });
+        }
+        let current = replay.state.player.position;
+        let alpha = (target_x - previous.x) / (current.x - previous.x);
+        let y = previous.y + (current.y - previous.y) * alpha;
+        let projected_y = 730. - (y - origin.y) * px_per_unit;
+        assert!(
+            (projected_y - screen_y).abs() < 1.5,
+            "captured {screen_y}, replayed {projected_y}"
+        );
+    }
 }
 
 #[test]
@@ -623,32 +1013,34 @@ fn editor_trigger_markers_are_circular_and_preserve_activation_coordinates() {
 }
 
 #[test]
-fn ship_free_flight_matches_the_old_cpp_update() {
+fn ship_uses_native_quantized_acceleration_and_a_single_displacement() {
     let mut sim = Simulation::new(level()).unwrap();
     sim.state.player.mode = PlayerMode::Ship;
-    sim.state.player.position.y = 850.;
+    sim.state.player.position.y = 650.;
     sim.state.player.grounded = false;
-    sim.state.player.velocity.y = -300.;
-    let mut qt_velocity: f64 = 300.;
-    let mut qt_y = 0.;
-    let mut qt_rotation = 0.;
-    for tick in 0..180 {
-        let held = tick < 80;
-        qt_velocity += 1800. / 240.;
-        if held {
-            qt_velocity -= 4300. / 240.;
-        }
-        qt_velocity = qt_velocity.clamp(-500., 500.);
-        // ship.cpp advances Y twice, then interpolates toward velocity * 0.07.
-        qt_y += 2. * qt_velocity / 240.;
-        qt_rotation += (qt_velocity * 0.07 - qt_rotation) * 20. / 240.;
+    // Native reference: 0.225 delta, gravity 0.958199, three-decimal Y velocity;
+    // held factors 0.5 / 0.4, released factors 0.32 / 0.48 near the apex.
+    let mut native_velocity: f64 = 0.;
+    let mut native_y = 0.;
+    for tick in 0..144 {
+        let held = tick < 48;
+        let falling = native_velocity < 1.916398;
+        let acceleration = match (held, falling) {
+            (true, true) => 0.5,
+            (true, false) => 0.4,
+            (false, true) => -0.32,
+            (false, false) => -0.48,
+        };
+        native_velocity =
+            ((native_velocity + 0.958199 * 0.225 * acceleration) * 1000.).round() / 1000.;
+        native_velocity = native_velocity.clamp(-6.4, 8.);
+        native_y += native_velocity * 0.225;
         sim.tick(TickInput {
             held,
             ..Default::default()
         });
-        assert!((sim.state.player.velocity.y + qt_velocity).abs() < 1e-8);
-        assert!((sim.state.player.position.y - (850. - qt_y)).abs() < 1e-8);
-        assert!((sim.state.player.rotation + qt_rotation).abs() < 1e-8);
+        assert!((sim.state.player.velocity.y - native_velocity * 144.).abs() < 1e-8);
+        assert!((sim.state.player.position.y - (650. + native_y * (80. / 30.))).abs() < 1e-8);
     }
 }
 
@@ -675,7 +1067,7 @@ fn ship_response_is_symmetric_under_reversed_gravity() {
 }
 
 #[test]
-fn ship_takeoff_matches_the_cpp_grounded_gravity_rule() {
+fn ship_takeoff_uses_the_same_thrust_as_airborne_reversal() {
     let mut grounded = Simulation::new(level()).unwrap();
     grounded.state.player.mode = PlayerMode::Ship;
     let mut airborne = Simulation::new(level()).unwrap();
@@ -690,8 +1082,49 @@ fn ship_takeoff_matches_the_cpp_grounded_gravity_rule() {
     airborne.tick(input);
     assert!(!grounded.state.player.grounded);
     assert!(grounded.state.player.velocity.y > 0.);
-    assert!((grounded.state.player.velocity.y - 4300. / 240.).abs() < 1e-9);
-    assert!((airborne.state.player.velocity.y - 2500. / 240.).abs() < 1e-9);
+    assert!((grounded.state.player.velocity.y - 15.552).abs() < 1e-9);
+    assert_eq!(
+        grounded.state.player.velocity.y,
+        airborne.state.player.velocity.y
+    );
+}
+
+#[test]
+fn held_auto_jump_keeps_the_original_extra_takeoff_step() {
+    let mut sim = Simulation::new(level()).unwrap();
+    let held = TickInput {
+        held: true,
+        ..Default::default()
+    };
+    sim.tick(held);
+    let fresh = sim.state.player.velocity.y;
+    for _ in 0..103 {
+        sim.tick(held);
+    }
+    assert!(sim.state.player.velocity.y > fresh);
+    assert!((sim.state.player.velocity.y - geometry_dash::constants::JUMP).abs() < 1e-6);
+}
+
+#[test]
+fn wave_displacement_is_exactly_45_degrees_and_falling_has_a_terminal_speed() {
+    let mut wave = Simulation::new(level()).unwrap();
+    wave.state.player.mode = PlayerMode::Wave;
+    wave.state.player.position.y = 700.;
+    let origin = wave.state.player.position;
+    wave.tick(TickInput {
+        held: true,
+        ..Default::default()
+    });
+    let delta = wave.state.player.position - origin;
+    assert!((delta.x - delta.y).abs() < 1e-9);
+    let mut cube = Simulation::new(level()).unwrap();
+    cube.state.player.position.y = 100_000.;
+    cube.state.player.grounded = false;
+    run(&mut cube, 480, TickInput::default());
+    assert_eq!(
+        cube.state.player.velocity.y,
+        -geometry_dash::constants::MAX_FALL_SPEED
+    );
 }
 
 #[test]
