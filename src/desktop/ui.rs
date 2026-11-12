@@ -8,8 +8,6 @@ use bevy::prelude::*;
 pub struct InterfacePlugin;
 #[derive(Component)]
 pub(super) struct UiRoot;
-#[derive(Component)]
-struct Hud;
 #[derive(Resource, Default)]
 struct DialogFont(Handle<Font>);
 
@@ -66,21 +64,32 @@ pub(super) enum Action {
     CloseSettings,
     NoDeathEffect,
     HideCheckpointButtons,
+    FpsLimit(u32),
     VolumeStep(crate::storage::MusicChannel, i16),
     AddCheckpoint,
     RemoveCheckpoint,
+    StartMode,
+    StartGravity,
+    ExitApplication,
+    Summary(&'static str),
+    CloseSummary,
+    HidePause,
+    External(&'static str),
 }
 impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<super::menu::MenuArt>()
             .init_resource::<super::editor_ui::EditorArt>()
             .init_resource::<DialogFont>()
+            .init_resource::<super::native_menu::NativeArt>()
+            .init_resource::<super::frame_rate::FrameTiming>()
             .add_systems(
                 Startup,
                 (
                     super::menu::load_art,
                     super::editor_ui::load_art,
                     load_dialog_font,
+                    super::native_menu::load,
                     setup_attempt_overlay,
                 ),
             )
@@ -91,6 +100,7 @@ impl Plugin for InterfacePlugin {
                     super::settings::sliders,
                     rebuild,
                     hud,
+                    super::native_menu::refresh_text,
                     super::editor_ui::tooltip,
                     update_attempt_overlay,
                 )
@@ -129,6 +139,7 @@ fn rebuild(
     art: Res<super::menu::MenuArt>,
     editor_art: Res<super::editor_ui::EditorArt>,
     dialog_font: Res<DialogFont>,
+    native_art: Res<super::native_menu::NativeArt>,
 ) {
     if !game.ui_dirty {
         return;
@@ -136,6 +147,26 @@ fn rebuild(
     game.ui_dirty = false;
     for e in &roots {
         commands.entity(e).despawn();
+    }
+    if matches!(
+        game.screen,
+        Screen::Menu | Screen::Levels | Screen::Paused | Screen::Playing
+    ) {
+        if game.screen == Screen::Playing {
+            super::native_menu::build_hud(&mut commands, &game, &native_art);
+        } else if !game.pause_hidden {
+            super::native_menu::build(&mut commands, &game, &native_art);
+        }
+        if let Some(title) = game.menu_panel {
+            super::native_menu::summary(&mut commands, &game, &native_art, title);
+        }
+        if game.exit_dialog.is_some() {
+            build_exit_dialog(&mut commands, &game, &dialog_font.0);
+        }
+        if game.settings_open {
+            super::settings::build(&mut commands, &game, &dialog_font.0);
+        }
+        return;
     }
     if game.exit_dialog.is_some() {
         build_exit_dialog(&mut commands, &game, &dialog_font.0);
@@ -188,96 +219,6 @@ fn rebuild(
         commands.entity(root).add_child(cancel);
         return;
     }
-    if game.screen == Screen::Playing {
-        let root = commands
-            .spawn((
-                UiRoot,
-                Node {
-                    position_type: PositionType::Absolute,
-                    width: percent(100),
-                    height: percent(100),
-                    ..default()
-                },
-            ))
-            .id();
-        let text = commands
-            .spawn((
-                Hud,
-                Text::new(""),
-                TextFont {
-                    font_size: FontSize::Px(20.),
-                    ..default()
-                },
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: px(18),
-                    top: px(14),
-                    ..default()
-                },
-            ))
-            .id();
-        commands.entity(root).add_child(text);
-        let pause = commands
-            .spawn((
-                Button,
-                Action::Pause,
-                Name::new("Pause (Esc / P)"),
-                Node {
-                    position_type: PositionType::Absolute,
-                    right: px(18),
-                    top: px(14),
-                    width: px(44),
-                    height: px(44),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.03, 0.1, 0.2, 0.8)),
-            ))
-            .id();
-        super::editor_icons::draw(&mut commands, pause, super::editor_icons::Icon::Pause);
-        commands.entity(root).add_child(pause);
-        if game.simulation.as_ref().is_some_and(|sim| sim.practice)
-            && !game.profile.settings.hide_checkpoint_buttons
-        {
-            for (left, action, icon, name) in [
-                (
-                    24.,
-                    Action::AddCheckpoint,
-                    super::editor_icons::Icon::Flag,
-                    "Add checkpoint (Z)",
-                ),
-                (
-                    94.,
-                    Action::RemoveCheckpoint,
-                    super::editor_icons::Icon::Trash,
-                    "Remove checkpoint (X)",
-                ),
-            ] {
-                let button = commands
-                    .spawn((
-                        Button,
-                        action,
-                        Name::new(name),
-                        Node {
-                            position_type: PositionType::Absolute,
-                            left: px(left),
-                            bottom: px(24),
-                            width: px(52),
-                            height: px(52),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgba(0.03, 0.1, 0.2, 0.8)),
-                    ))
-                    .id();
-                super::editor_icons::draw(&mut commands, button, icon);
-                commands.entity(root).add_child(button);
-            }
-        }
-        return;
-    }
     if game.screen == Screen::Editor {
         super::editor_ui::build(&mut commands, &game, &editor_art);
         return;
@@ -296,12 +237,34 @@ fn buttons(
             &mut BackgroundColor,
             Option<&super::menu::ImageButton>,
             Option<&mut UiTransform>,
+            Option<&super::menu::MirroredButton>,
         ),
         With<Button>,
     >,
 ) {
     let mut selected = None;
-    for (interaction, action, mut color, image, transform) in &mut query {
+    for (interaction, action, mut color, image, transform, mirrored) in &mut query {
+        if let Action::FpsLimit(fps) = *action {
+            if !game.display_rate.supports(fps) {
+                color.0 = Color::srgb(0.1, 0.11, 0.14);
+                continue;
+            }
+            if *interaction == Interaction::Pressed && mouse.just_pressed(MouseButton::Left) {
+                selected = Some(*action);
+            }
+            color.0 = if fps
+                == game
+                    .display_rate
+                    .selected_fps(game.profile.settings.fps_limit())
+            {
+                Color::srgb(0.12, 0.5, 0.22)
+            } else if *interaction == Interaction::Hovered {
+                Color::srgb(0.12, 0.3, 0.5)
+            } else {
+                Color::srgb(0.08, 0.15, 0.28)
+            };
+            continue;
+        }
         if let Some(image) = image {
             color.0 = image.background;
             if let Some(mut transform) = transform {
@@ -310,6 +273,9 @@ fn buttons(
                     Interaction::Hovered => 1.06,
                     Interaction::None => 1.,
                 });
+                if mirrored.is_some() {
+                    transform.scale.x = -transform.scale.x;
+                }
             }
         } else {
             color.0 = match interaction {
@@ -325,6 +291,9 @@ fn buttons(
     let Some(action) = selected else {
         return;
     };
+    if game.menu_panel.is_some() && !matches!(action, Action::CloseSummary) {
+        return;
+    }
     if game.exit_dialog.is_some() && !matches!(action, Action::CancelExit | Action::ConfirmExit) {
         return;
     }
@@ -334,6 +303,7 @@ fn buttons(
             Action::CloseSettings
                 | Action::NoDeathEffect
                 | Action::HideCheckpointButtons
+                | Action::FpsLimit(..)
                 | Action::VolumeStep(..)
         )
     {
@@ -342,6 +312,13 @@ fn buttons(
     match action {
         Action::Settings => game.open_settings(),
         Action::CloseSettings => game.close_settings(),
+        Action::FpsLimit(fps) => {
+            if game.settings_open && game.display_rate.supports(fps) {
+                game.profile.settings.fps_limit = fps;
+                game.persist();
+                game.ui_dirty = true;
+            }
+        }
         Action::NoDeathEffect | Action::HideCheckpointButtons => {
             let settings = &mut game.profile.settings;
             let value = match action {
@@ -421,7 +398,7 @@ fn buttons(
                 s.checkpoints.clear();
                 s.restart(false);
             }
-            game.pending_seek = Some(0.);
+            game.pending_seek = Some(game.simulation.as_ref().map_or(0., |s| s.state.elapsed));
             game.attempt.enter(super::attempt::Phase::Spawning);
             game.clear_trail = true;
             game.add_attempt();
@@ -442,12 +419,30 @@ fn buttons(
         Action::Rotation => game.open_prompt(Field::Rotation),
         Action::Trigger => game.open_prompt(Field::Trigger),
         Action::Test => game.start(true),
+        Action::ExitApplication => game.escape(),
+        Action::Summary(title) => {
+            game.menu_panel = Some(title);
+            game.ui_dirty = true;
+        }
+        Action::CloseSummary => {
+            game.menu_panel = None;
+            game.ui_dirty = true;
+        }
+        Action::HidePause => {
+            game.pause_hidden = true;
+            game.ui_dirty = true;
+        }
+        Action::External(url) => {
+            super::native_menu::open_link(url);
+        }
         Action::ExitEditor => game.exit_editor(),
         other => {
             let mut changed = false;
             if let Some(editor) = game.editor.as_mut() {
                 let before = editor.revision;
                 match other {
+                    Action::StartMode => editor.cycle_start_setting(false),
+                    Action::StartGravity => editor.cycle_start_setting(true),
                     Action::Tool(i) => editor.choose_tool(i),
                     Action::EditorMode(mode) => editor.set_mode(mode),
                     Action::EditorCategory(category) => editor.category = category,
@@ -489,8 +484,13 @@ fn buttons(
 fn hud(
     game: Res<Game>,
     time: Res<Time>,
+    timing: Res<super::frame_rate::FrameTiming>,
     mut timer: Local<f32>,
-    mut text: Query<&mut Text, With<Hud>>,
+    mut text: Query<(
+        &mut super::native_menu::BitmapText,
+        Option<&super::native_menu::HudProgress>,
+        Option<&super::native_menu::HudFps>,
+    )>,
 ) {
     *timer += time.delta_secs();
     if *timer < 0.1 {
@@ -500,24 +500,19 @@ fn hud(
     let Some(sim) = &game.simulation else {
         return;
     };
-    for mut text in &mut text {
-        text.0 = format!(
-            "{}  ·  {}%  ·  {}  ·  {:.0} FPS\nEsc / P: pause   R: restart{}{}",
-            sim.level.name,
-            sim.progress(),
-            sim.state.player.mode.name(),
-            1. / time.delta_secs().max(0.0001),
-            if sim.practice {
-                "   Z/X: checkpoints"
-            } else {
-                ""
-            },
-            if game.status.is_empty() {
-                String::new()
-            } else {
-                format!("\n{}", game.status)
-            }
-        );
+    for (mut label, progress, fps) in &mut text {
+        let value = if progress.is_some() {
+            Some(format!("{}%", sim.progress()))
+        } else if fps.is_some() {
+            Some(format!("{:.0} FPS", timing.fps()))
+        } else {
+            None
+        };
+        if let Some(value) = value
+            && label.value != value
+        {
+            label.value = value;
+        }
     }
 }
 
@@ -676,7 +671,71 @@ mod tests {
     }
 
     #[test]
-    fn star_counter_is_always_visible_even_with_the_removed_legacy_option_disabled() {
+    fn fps_buttons_reject_unsupported_rates_and_persist_supported_choices() {
+        let mut game = Game::new(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+        game.root = std::env::temp_dir().join(format!("gd-fps-ui-{}", std::process::id()));
+        let root = game.root.clone();
+        game.profile = crate::storage::Profile::default();
+        game.display_rate.refresh_rate_millihertz = Some(144_000);
+        game.open_settings();
+        let mut app = App::new();
+        app.insert_resource(game)
+            .init_resource::<super::super::menu::MenuArt>()
+            .init_resource::<super::super::native_menu::NativeArt>()
+            .init_resource::<super::super::editor_ui::EditorArt>()
+            .init_resource::<DialogFont>()
+            .init_resource::<ButtonInput<MouseButton>>()
+            .add_systems(Update, (buttons, rebuild).chain());
+        app.update();
+        let mut disabled = app
+            .world_mut()
+            .query::<(&Action, Option<&bevy::ui::InteractionDisabled>)>()
+            .iter(app.world())
+            .filter_map(|(action, disabled)| match action {
+                Action::FpsLimit(fps) => Some((*fps, disabled.is_some())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        disabled.sort_unstable_by_key(|v| v.0);
+        assert_eq!(
+            disabled,
+            vec![(60, false), (120, false), (144, false), (240, true)]
+        );
+        // Even a synthetic press on a disabled option must be rejected.
+        click_button(&mut app, |a| matches!(a, Action::FpsLimit(240)));
+        assert_eq!(
+            app.world().resource::<Game>().profile.settings.fps_limit,
+            60
+        );
+        for fps in [120, 144, 60] {
+            click_button(
+                &mut app,
+                |a| matches!(a, Action::FpsLimit(value) if *value == fps),
+            );
+            assert_eq!(
+                app.world().resource::<Game>().profile.settings.fps_limit,
+                fps
+            );
+            assert_eq!(
+                crate::storage::Profile::load(&root)
+                    .unwrap()
+                    .settings
+                    .fps_limit,
+                fps
+            );
+        }
+        // Unknown monitor information also blocks settings above 60 FPS.
+        app.world_mut().resource_mut::<Game>().display_rate = Default::default();
+        click_button(&mut app, |a| matches!(a, Action::FpsLimit(120)));
+        assert_eq!(
+            app.world().resource::<Game>().profile.settings.fps_limit,
+            60
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn native_screens_use_level_ratings_instead_of_an_extra_global_star_widget() {
         let mut game = Game::new(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")));
         game.profile =
             serde_json::from_value(serde_json::json!({"settings":{"show_star_counter":false}}))
@@ -684,6 +743,7 @@ mod tests {
         let mut app = App::new();
         app.insert_resource(game)
             .init_resource::<super::super::menu::MenuArt>()
+            .init_resource::<super::super::native_menu::NativeArt>()
             .init_resource::<super::super::editor_ui::EditorArt>()
             .init_resource::<DialogFont>()
             .add_systems(Update, rebuild);
@@ -702,7 +762,11 @@ mod tests {
                 .iter(app.world())
                 .filter(|name| name.as_str() == "Star counter")
                 .count();
-            assert_eq!(counters, 1, "missing star counter on {screen:?}");
+            assert_eq!(
+                counters,
+                usize::from(matches!(screen, Screen::Icons | Screen::Complete)),
+                "unexpected global star widget on {screen:?}"
+            );
         }
     }
 
@@ -722,6 +786,7 @@ mod tests {
         let mut app = App::new();
         app.insert_resource(game)
             .init_resource::<super::super::menu::MenuArt>()
+            .init_resource::<super::super::native_menu::NativeArt>()
             .init_resource::<super::super::editor_ui::EditorArt>()
             .init_resource::<DialogFont>()
             .init_resource::<ButtonInput<MouseButton>>()
@@ -809,6 +874,7 @@ mod tests {
             let mut app = App::new();
             app.insert_resource(game)
                 .init_resource::<super::super::menu::MenuArt>()
+                .init_resource::<super::super::native_menu::NativeArt>()
                 .init_resource::<super::super::editor_ui::EditorArt>()
                 .init_resource::<DialogFont>()
                 .init_resource::<ButtonInput<MouseButton>>()
@@ -866,6 +932,7 @@ mod tests {
         game.escape();
         app.insert_resource(game)
             .init_resource::<super::super::menu::MenuArt>()
+            .init_resource::<super::super::native_menu::NativeArt>()
             .init_resource::<super::super::editor_ui::EditorArt>()
             .init_resource::<DialogFont>()
             .init_resource::<ButtonInput<MouseButton>>()
@@ -922,6 +989,7 @@ mod tests {
             "CARGO_MANIFEST_DIR"
         ))))
         .init_resource::<super::super::menu::MenuArt>()
+        .init_resource::<super::super::native_menu::NativeArt>()
         .init_resource::<super::super::editor_ui::EditorArt>()
         .init_resource::<DialogFont>()
         .add_systems(Update, rebuild);
