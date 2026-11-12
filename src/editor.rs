@@ -4,7 +4,7 @@ use crate::{
 };
 use std::{collections::VecDeque, path::PathBuf};
 
-pub const TOOLS: [&str; 18] = [
+pub const TOOLS: [&str; 19] = [
     "select",
     "block",
     "platform",
@@ -23,6 +23,7 @@ pub const TOOLS: [&str; 18] = [
     "ground_color_change",
     "color_change",
     "end_level",
+    "start_pos",
 ];
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum EditorMode {
@@ -162,6 +163,10 @@ impl Editor {
             p.y,
         );
         object.rotation = self.rotation;
+        if object.kind == "start_pos" {
+            object.extra.insert("mode".into(), "auto".into());
+            object.extra.insert("gravity".into(), "auto".into());
+        }
         if object.kind == "block" {
             object.texture = Some(format!("block{}", self.texture));
         }
@@ -175,6 +180,31 @@ impl Editor {
         }
         self.level.objects.push(object);
         self.selected = Some(self.level.objects.len() - 1);
+    }
+    pub fn cycle_start_setting(&mut self, gravity: bool) {
+        let Some(id) = self
+            .selected
+            .filter(|&id| self.level.objects[id].kind == "start_pos")
+        else {
+            return;
+        };
+        let (key, options): (&str, &[&str]) = if gravity {
+            ("gravity", &["auto", "normal", "reverse"])
+        } else {
+            (
+                "mode",
+                &["auto", "cube", "ship", "wave", "robot", "spider", "ball"],
+            )
+        };
+        let current = self.level.objects[id]
+            .extra
+            .get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or("auto");
+        let next =
+            options[(options.iter().position(|&v| v == current).unwrap_or(0) + 1) % options.len()];
+        self.remember();
+        self.level.objects[id].extra.insert(key.into(), next.into());
     }
     pub fn delete(&mut self) {
         if let Some(i) = self.selected {
