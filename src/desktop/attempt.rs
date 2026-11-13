@@ -80,8 +80,19 @@ pub(super) fn advance(mut game: ResMut<Game>, time: Res<Time<Real>>) {
     if game.screen != Screen::Playing || game.exit_dialog.is_some() {
         return;
     }
-    match game.attempt.advance(time.delta_secs_f64()) {
-        Next::Reset => game.reset_attempt(),
+    let dying = game.attempt.phase == Phase::Dying;
+    let speed = if dying && game.profile.settings.faster_reset {
+        3.
+    } else {
+        1.
+    };
+    match game.attempt.advance(time.delta_secs_f64() * speed) {
+        Next::Reset => {
+            game.reset_attempt();
+            if dying && !game.profile.settings.auto_retry {
+                game.screen(Screen::Paused);
+            }
+        }
         Next::Ready => {
             game.block_fixed_frame = true;
             game.input = Default::default();

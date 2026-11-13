@@ -131,7 +131,7 @@ layers. Level scroll derives from simulation time, so it freezes on pause/death 
 restores consistently after a checkpoint. Menu scenery uses menu time.
 
 Escape opens application exit confirmation only in the main menu. Cancel stays
-in the menu; another Escape dismisses the dialog. Enter or the Exit button saves progress and sends the
+in the menu; another Escape dismisses the dialog. Enter or the Yes button saves progress and sends the
 application exit event. During a level, Escape opens pause, freezing the simulation,
 attempt transition and music. Escape from pause leaves the attempt and returns to
 that level's selection page, saving progress and preserving the selected level

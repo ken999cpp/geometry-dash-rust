@@ -14,6 +14,7 @@ pub(super) enum FontKind {
     #[default]
     Big,
     Gold,
+    Chat,
 }
 #[derive(Deserialize)]
 struct Glyph {
@@ -27,6 +28,7 @@ struct Glyph {
 }
 #[derive(Deserialize)]
 struct BitmapFont {
+    line_height: f32,
     glyphs: HashMap<u32, Glyph>,
     kerning: HashMap<String, f32>,
 }
@@ -48,13 +50,40 @@ impl Default for NativeArt {
     }
 }
 impl NativeArt {
-    fn image(&self, name: &str) -> Handle<Image> {
+    pub(super) fn text_width(&self, value: &str, kind: FontKind) -> f32 {
+        let font = self.font(kind);
+        let (mut pen, mut min, mut max) = (0_f32, f32::MAX, f32::MIN);
+        let mut previous = 0;
+        for id in value.chars().map(u32::from) {
+            if id == u32::from('\n') {
+                pen = 0.;
+                previous = 0;
+                continue;
+            }
+            if let Some(g) = font.glyphs.get(&id) {
+                pen += font
+                    .kerning
+                    .get(&format!("{previous}:{id}"))
+                    .copied()
+                    .unwrap_or(0.);
+                if g.width > 0. {
+                    min = min.min(pen + g.xoffset);
+                    max = max.max(pen + g.xoffset + g.width);
+                }
+                pen += g.xadvance;
+                previous = id;
+            }
+        }
+        ((max - min) / 4.).max(1.)
+    }
+    pub(super) fn image(&self, name: &str) -> Handle<Image> {
         self.images.get(name).cloned().unwrap_or_default()
     }
     fn font(&self, kind: FontKind) -> &BitmapFont {
         &self.fonts[match kind {
             FontKind::Big => "bigFont",
             FontKind::Gold => "goldFont",
+            FontKind::Chat => "chatFont",
         }]
     }
 }
@@ -63,6 +92,7 @@ pub(super) fn load(mut commands: Commands, server: Res<AssetServer>) {
     for name in art.sizes.keys().map(String::as_str).chain([
         "bigFont.png",
         "goldFont.png",
+        "chatFont.png",
         "slidergroove.png",
         "sliderthumb.png",
         "sliderBar.png",
@@ -75,7 +105,7 @@ pub(super) fn load(mut commands: Commands, server: Res<AssetServer>) {
 pub(super) fn n(value: f32) -> Val {
     vh(value / 3.2)
 }
-fn add(commands: &mut Commands, parent: Entity, bundle: impl Bundle) -> Entity {
+pub(super) fn add(commands: &mut Commands, parent: Entity, bundle: impl Bundle) -> Entity {
     let e = commands.spawn(bundle).id();
     commands.entity(parent).add_child(e);
     e
@@ -91,7 +121,7 @@ pub(super) fn center(x: f32, y: f32, w: f32, h: f32) -> Node {
         ..default()
     }
 }
-fn left(x: f32, y: f32, w: f32, h: f32) -> Node {
+pub(super) fn left(x: f32, y: f32, w: f32, h: f32) -> Node {
     Node {
         position_type: PositionType::Absolute,
         left: n(x - w / 2.),
@@ -111,16 +141,23 @@ fn right(x: f32, y: f32, w: f32, h: f32) -> Node {
         ..default()
     }
 }
-fn image(
+pub(super) fn image(
     commands: &mut Commands,
     parent: Entity,
     art: &NativeArt,
     name: &str,
     node: Node,
 ) -> Entity {
-    add(commands, parent, (node, ImageNode::new(art.image(name))))
+    add(
+        commands,
+        parent,
+        (
+            node,
+            ImageNode::new(art.image(name)).with_mode(NodeImageMode::Stretch),
+        ),
+    )
 }
-fn button(
+pub(super) fn button(
     commands: &mut Commands,
     parent: Entity,
     art: &NativeArt,
@@ -139,7 +176,7 @@ fn button(
             UiTransform::default(),
             BackgroundColor(Color::NONE),
             node,
-            ImageNode::new(art.image(name)),
+            ImageNode::new(art.image(name)).with_mode(NodeImageMode::Stretch),
         ),
     )
 }
@@ -149,6 +186,11 @@ pub(super) struct BitmapText {
     kind: FontKind,
     scale: f32,
 }
+#[derive(Component)]
+pub(super) struct BitmapHighlight {
+    pub range: std::ops::Range<usize>,
+    pub color: Color,
+}
 pub(super) fn text(
     commands: &mut Commands,
     parent: Entity,
@@ -157,7 +199,9 @@ pub(super) fn text(
     scale: f32,
     mut node: Node,
 ) -> Entity {
-    node.justify_content = JustifyContent::Center;
+    if node.justify_content != JustifyContent::Start {
+        node.justify_content = JustifyContent::Center;
+    }
     node.align_items = AlignItems::Center;
     let wrapper = add(commands, parent, node);
     add(
@@ -176,16 +220,26 @@ pub(super) fn text(
 pub(super) fn refresh_text(
     mut commands: Commands,
     art: Res<NativeArt>,
-    mut labels: Query<(Entity, &BitmapText, &mut Node), Changed<BitmapText>>,
+    mut labels: Query<
+        (Entity, &BitmapText, &mut Node, Option<&BitmapHighlight>),
+        Changed<BitmapText>,
+    >,
 ) {
-    for (entity, label, mut node) in &mut labels {
+    for (entity, label, mut node, highlight) in &mut labels {
         commands.entity(entity).despawn_children();
         let font = art.font(label.kind);
         let mut pen = 0.;
         let mut previous = 0;
+        let mut line_y = 0.;
         let mut glyphs = Vec::new();
         let (mut min_x, mut min_y, mut max_x, mut max_y) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-        for ch in label.value.chars() {
+        for (index, ch) in label.value.chars().enumerate() {
+            if ch == '\n' {
+                pen = 0.;
+                previous = 0;
+                line_y += font.line_height;
+                continue;
+            }
             let id = ch as u32;
             let Some(g) = font.glyphs.get(&id).or_else(|| font.glyphs.get(&63)) else {
                 continue;
@@ -197,12 +251,12 @@ pub(super) fn refresh_text(
                 .unwrap_or(0.);
             if g.width > 0. && g.height > 0. {
                 let x = pen + g.xoffset;
-                let y = g.yoffset;
+                let y = g.yoffset + line_y;
                 min_x = min_x.min(x);
                 min_y = min_y.min(y);
                 max_x = max_x.max(x + g.width);
                 max_y = max_y.max(y + g.height);
-                glyphs.push((g, x, y));
+                glyphs.push((g, x, y, index));
             }
             pen += g.xadvance;
             previous = id;
@@ -218,8 +272,9 @@ pub(super) fn refresh_text(
         let atlas = art.image(match label.kind {
             FontKind::Big => "bigFont.png",
             FontKind::Gold => "goldFont.png",
+            FontKind::Chat => "chatFont.png",
         });
-        for (g, x, y) in glyphs {
+        for (g, x, y, index) in glyphs {
             add(
                 &mut commands,
                 entity,
@@ -233,6 +288,9 @@ pub(super) fn refresh_text(
                         ..default()
                     },
                     ImageNode {
+                        color: highlight
+                            .filter(|h| h.range.contains(&index))
+                            .map_or(Color::WHITE, |h| h.color),
                         image: atlas.clone(),
                         rect: Some(Rect::new(g.x, g.y, g.x + g.width, g.y + g.height)),
                         ..default()
@@ -258,6 +316,137 @@ fn caption(
         center(0., y, 360., 35.),
     )
 }
+pub(super) fn build_quit_dialog(commands: &mut Commands, art: &NativeArt) {
+    let root = commands
+        .spawn((
+            UiRoot,
+            Name::new("Quit Game dialog"),
+            GlobalZIndex(2000),
+            Node {
+                position_type: PositionType::Absolute,
+                width: percent(100),
+                height: percent(100),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0., 0., 0., 0.8)),
+        ))
+        .id();
+    super::settings::sliced(
+        commands,
+        root,
+        art,
+        "dialog_panel.png",
+        center(0., 160., 300., 140.),
+        17.,
+    );
+    text(
+        commands,
+        root,
+        "Quit Game",
+        FontKind::Gold,
+        0.9,
+        center(0., 119., 280., 28.),
+    );
+    let question = "Are you sure you want to quit?";
+    let label = text(
+        commands,
+        root,
+        question,
+        FontKind::Chat,
+        1.0,
+        center(0., 156., 270., 24.),
+    );
+    let start = question.find("quit").expect("quit word");
+    commands.entity(label).insert(BitmapHighlight {
+        range: start..start + 4,
+        color: Color::srgb(1., 0.3, 0.3),
+    });
+    for (label, action, x, width) in [
+        ("Cancel", Action::CancelExit, -40., 106.),
+        ("Yes", Action::ConfirmExit, 60., 64.),
+    ] {
+        super::settings::long_button(
+            commands,
+            root,
+            art,
+            label,
+            action,
+            (x, 200., width),
+            "GJ_button_01.png",
+        );
+    }
+}
+pub(super) fn build_editor_exit_dialog(commands: &mut Commands, art: &NativeArt) {
+    let root = commands
+        .spawn((
+            UiRoot,
+            Name::new("Exit editor dialog"),
+            GlobalZIndex(2000),
+            Node {
+                position_type: PositionType::Absolute,
+                width: percent(100),
+                height: percent(100),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0., 0., 0., 0.8)),
+        ))
+        .id();
+    super::settings::sliced(
+        commands,
+        root,
+        art,
+        "dialog_panel.png",
+        center(0., 160., 300., 140.),
+        17.,
+    );
+    text(
+        commands,
+        root,
+        "Exit",
+        FontKind::Gold,
+        0.9,
+        center(0., 119., 280., 28.),
+    );
+    let first = text(
+        commands,
+        root,
+        "Exit without saving? All unsaved changes",
+        FontKind::Chat,
+        1.,
+        center(0., 146., 275., 22.),
+    );
+    commands.entity(first).insert(BitmapHighlight {
+        range: 0..4,
+        color: Color::srgb(1., 1., 0.),
+    });
+    let second = text(
+        commands,
+        root,
+        "will be lost!",
+        FontKind::Chat,
+        1.,
+        center(0., 166., 275., 22.),
+    );
+    commands.entity(second).insert(BitmapHighlight {
+        range: 8..12,
+        color: Color::srgb(1., 0.3, 0.3),
+    });
+    for (label, action, x, w) in [
+        ("No", Action::CancelExit, -42., 55.),
+        ("Yes", Action::ConfirmExit, 34., 70.),
+    ] {
+        super::settings::long_button(
+            commands,
+            root,
+            art,
+            label,
+            action,
+            (x, 200., w),
+            "GJ_button_01.png",
+        );
+    }
+}
+
 fn coins(commands: &mut Commands, root: Entity, art: &NativeArt, y: f32, small: bool) {
     let size = if small { 24. } else { 26. };
     for dx in [-45., 0., 45.] {
@@ -907,6 +1096,10 @@ fn pause_slider(
 pub(super) struct HudProgress;
 #[derive(Component)]
 pub(super) struct HudFps;
+#[derive(Component)]
+pub(super) struct HudTime;
+#[derive(Component)]
+pub(super) struct HudBar;
 pub(super) fn build_hud(commands: &mut Commands, game: &Game, art: &NativeArt) {
     let root = commands
         .spawn((
@@ -919,31 +1112,73 @@ pub(super) fn build_hud(commands: &mut Commands, game: &Game, art: &NativeArt) {
             },
         ))
         .id();
-    let label = text(
-        commands,
-        root,
-        "0%",
-        FontKind::Big,
-        0.5,
-        center(0., 9., 100., 20.),
-    );
-    commands.entity(label).insert(HudProgress);
-    let fps = text(
-        commands,
-        root,
-        "",
-        FontKind::Gold,
-        0.3,
-        left(25., 8., 50., 15.),
-    );
-    commands.entity(fps).insert(HudFps);
+    if game.profile.settings.show_percentage {
+        let label = text(
+            commands,
+            root,
+            "0%",
+            FontKind::Big,
+            0.5,
+            center(0., 9., 100., 20.),
+        );
+        commands.entity(label).insert(HudProgress);
+    }
+    if game.profile.settings.show_fps {
+        let fps = text(
+            commands,
+            root,
+            "",
+            FontKind::Gold,
+            0.3,
+            left(25., 8., 50., 15.),
+        );
+        commands.entity(fps).insert(HudFps);
+    }
+    if game.profile.settings.show_time {
+        let clock = text(
+            commands,
+            root,
+            "0.00",
+            FontKind::Big,
+            0.4,
+            center(0., 26., 100., 16.),
+        );
+        commands.entity(clock).insert(HudTime);
+    }
+    if game.profile.settings.show_progress_bar {
+        let bar = add(
+            commands,
+            root,
+            (
+                center(0., 7., 200., 5.),
+                BackgroundColor(Color::srgba(0., 0., 0., 0.6)),
+            ),
+        );
+        add(
+            commands,
+            bar,
+            (
+                HudBar,
+                Node {
+                    height: percent(100),
+                    width: percent(0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgb(0., 1., 0.)),
+            ),
+        );
+    }
     button(
         commands,
         root,
         art,
         "GJ_pauseBtn_001.png",
         Action::Pause,
-        right(12., 12., 22.8, 23.7),
+        if game.profile.settings.flip_pause_button {
+            left(12., 12., 22.8, 23.7)
+        } else {
+            right(12., 12., 22.8, 23.7)
+        },
     );
     if game.simulation.as_ref().is_some_and(|s| s.practice)
         && !game.profile.settings.hide_checkpoint_buttons

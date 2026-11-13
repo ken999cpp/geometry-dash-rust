@@ -27,7 +27,8 @@ fn sync_cursor_visibility(
     mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
 ) {
     for (window, mut cursor) in &mut windows {
-        let visible = game.screen != Screen::Playing
+        let visible = game.profile.settings.show_cursor
+            || game.screen != Screen::Playing
             || !window.focused
             || game.settings_open
             || game.exit_dialog.is_some()
@@ -35,6 +36,14 @@ fn sync_cursor_visibility(
         if cursor.visible != visible {
             cursor.visible = visible;
         }
+        cursor.grab_mode = if game.profile.settings.lock_cursor
+            && game.screen == Screen::Playing
+            && window.focused
+        {
+            bevy::window::CursorGrabMode::Confined
+        } else {
+            bevy::window::CursorGrabMode::None
+        };
     }
 }
 
@@ -141,7 +150,11 @@ fn capture(
     }
     events.clear();
     if game.screen == Screen::Paused && keys.just_pressed(KeyCode::KeyE) {
-        game.edit();
+        if game.testing {
+            game.leave_level();
+        } else {
+            game.edit();
+        }
         return;
     }
     if keys.just_pressed(KeyCode::KeyP) {
@@ -184,7 +197,11 @@ fn capture(
         if mouse.just_pressed(MouseButton::Left)
             && window.cursor_position().is_some_and(|p| {
                 let scale = window.height() / 320.;
-                p.x >= window.width() - 24. * scale && p.y <= 24. * scale
+                (if game.profile.settings.flip_pause_button {
+                    p.x <= 24. * scale
+                } else {
+                    p.x >= window.width() - 24. * scale
+                }) && p.y <= 24. * scale
             })
         {
             game.screen(Screen::Paused);
@@ -239,6 +256,15 @@ fn capture(
     if game.screen != Screen::Editor {
         return;
     }
+    if game
+        .editor
+        .as_ref()
+        .is_some_and(|e| e.pause_open || e.settings_open || e.start_settings_open || e.files_open)
+    {
+        game.dragging = None;
+        events.clear();
+        return;
+    }
     if ctrl && keys.just_pressed(KeyCode::KeyS) {
         game.save_editor(shift);
         return;
@@ -255,49 +281,59 @@ fn capture(
         return;
     };
     let old_revision = editor.revision;
-    if keys.just_pressed(KeyCode::KeyM) {
-        editor.cycle_start_setting(false);
-    }
-    if keys.just_pressed(KeyCode::KeyV) {
-        editor.cycle_start_setting(true);
-    }
-    if ctrl && keys.just_pressed(KeyCode::KeyZ) {
-        if shift {
-            editor.redo();
-        } else {
-            editor.undo();
+    let mut ui_changed = false;
+    if !editor.view_only {
+        if ctrl && keys.just_pressed(KeyCode::KeyC) {
+            editor.copy();
+            ui_changed = true;
         }
-    }
-    if ctrl && keys.just_pressed(KeyCode::KeyY) {
-        editor.redo();
-    }
-    if ctrl && keys.just_pressed(KeyCode::KeyD) {
-        editor.duplicate();
-    }
-    if keys.just_pressed(KeyCode::Delete) {
-        editor.delete();
-    }
-    if keys.just_pressed(KeyCode::KeyG) {
-        editor.grid = !editor.grid;
-    }
-    if keys.just_pressed(KeyCode::KeyR) {
-        editor.rotate(2.5);
-    }
-    if keys.just_pressed(KeyCode::KeyT) {
-        editor.rotate(-2.5);
-    }
-    if keys.just_pressed(KeyCode::Digit0) {
-        editor.zoom = 1.;
-    }
-    let step = if shift { 1. } else { crate::level::GRID };
-    for (key, x, y) in [
-        (KeyCode::ArrowLeft, -step, 0.),
-        (KeyCode::ArrowRight, step, 0.),
-        (KeyCode::ArrowUp, 0., step),
-        (KeyCode::ArrowDown, 0., -step),
-    ] {
-        if keys.just_pressed(key) {
-            editor.move_selected(Point::new(x, y), true);
+        if ctrl && keys.just_pressed(KeyCode::KeyV) {
+            editor.paste();
+        }
+        if keys.just_pressed(KeyCode::KeyM) {
+            editor.cycle_start_setting(false);
+        }
+        if !ctrl && keys.just_pressed(KeyCode::KeyV) {
+            editor.cycle_start_setting(true);
+        }
+        if ctrl && keys.just_pressed(KeyCode::KeyZ) {
+            if shift {
+                editor.redo();
+            } else {
+                editor.undo();
+            }
+        }
+        if ctrl && keys.just_pressed(KeyCode::KeyY) {
+            editor.redo();
+        }
+        if ctrl && keys.just_pressed(KeyCode::KeyD) {
+            editor.duplicate();
+        }
+        if keys.just_pressed(KeyCode::Delete) {
+            editor.delete();
+        }
+        if keys.just_pressed(KeyCode::KeyG) {
+            editor.grid = !editor.grid;
+        }
+        if keys.just_pressed(KeyCode::KeyR) {
+            editor.rotate(2.5);
+        }
+        if keys.just_pressed(KeyCode::KeyT) {
+            editor.rotate(-2.5);
+        }
+        if keys.just_pressed(KeyCode::Digit0) {
+            editor.zoom = 1.;
+        }
+        let step = if shift { 1. } else { editor.move_step };
+        for (key, x, y) in [
+            (KeyCode::ArrowLeft, -step, 0.),
+            (KeyCode::ArrowRight, step, 0.),
+            (KeyCode::ArrowUp, 0., step),
+            (KeyCode::ArrowDown, 0., -step),
+        ] {
+            if keys.just_pressed(key) {
+                editor.move_selected(Point::new(x, y), true);
+            }
         }
     }
     let pan = 1000. * time.delta_secs_f64() / editor.zoom;
@@ -316,11 +352,12 @@ fn capture(
         }
     }
     let in_view = window.cursor_position().is_some_and(|p| {
-        super::editor_ui::canvas_contains(
-            p,
-            Vec2::new(window.width(), window.height()),
-            editor.settings_open,
-        )
+        editor.view_only
+            || super::editor_ui::canvas_contains(
+                p,
+                Vec2::new(window.width(), window.height()),
+                editor.settings_open,
+            )
     });
     if in_view {
         editor.zoom = (editor.zoom * 1.2_f64.powf(scroll.delta.y as f64)).clamp(0.1, 10.);
@@ -336,12 +373,12 @@ fn capture(
                     (cursor.x - window.width() / 2.) as f64 * units,
                     (window.height() / 2. - cursor.y) as f64 * units,
                 );
-            if mouse.just_pressed(MouseButton::Left) {
+            if !editor.view_only && mouse.just_pressed(MouseButton::Left) {
                 match editor.mode {
                     EditorMode::Build => editor.place(world),
                     EditorMode::Edit => editor.select_at(world),
                     EditorMode::Delete => {
-                        editor.select_at(world);
+                        editor.select_delete_at(world);
                         editor.delete();
                     }
                 }
@@ -350,12 +387,29 @@ fn capture(
                 game.drag_changed = false;
                 game.scene_dirty |= old_revision != rev;
                 game.ui_dirty = true;
-            } else if mouse.pressed(MouseButton::Left) {
+            } else if !editor.view_only && mouse.pressed(MouseButton::Left) {
                 let previous = game.dragging;
                 let remember = !game.drag_changed;
                 if let Some(previous) = previous {
                     let editor = game.editor.as_mut().unwrap();
-                    if editor.mode == EditorMode::Edit {
+                    if editor.mode == EditorMode::Build && editor.swipe {
+                        if editor.snap(world) != editor.snap(previous) {
+                            editor.place(world);
+                            game.dragging = Some(world);
+                            game.scene_dirty = true;
+                            game.ui_dirty = true;
+                        }
+                    } else if editor.mode == EditorMode::Edit && editor.swipe {
+                        editor.select_rect(previous, world);
+                        game.ui_dirty = true;
+                    } else if editor.mode == EditorMode::Delete && editor.swipe {
+                        editor.select_delete_at(world);
+                        if editor.selected.is_some() {
+                            editor.delete();
+                            game.scene_dirty = true;
+                            game.ui_dirty = true;
+                        }
+                    } else if editor.mode == EditorMode::Edit {
                         let delta = if editor.snap_to_grid {
                             let p = editor.snap(world);
                             let q = editor.snap(previous);
@@ -384,6 +438,7 @@ fn capture(
         game.ui_dirty = true;
         game.confirm_exit = false;
     }
+    game.ui_dirty |= ui_changed;
 }
 
 #[cfg(test)]

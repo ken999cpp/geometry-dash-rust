@@ -250,5 +250,417 @@
   "gjCoinUI_02_off_001.png": [
     23.5,
     23.5
+  ],
+  "GJ_table_top_001.png": [
+    394.0,
+    53.75
+  ],
+  "GJ_table_bottom_001.png": [
+    389.0,
+    51.5
+  ],
+  "GJ_table_side_001.png": [
+    29.75,
+    64.0
+  ],
+  "chain_01_001.png": [
+    19.5,
+    69.5
+  ],
+  "GJ_longBtn01_001.png": [
+    91.75,
+    30.5
+  ],
+  "GJ_longBtn02_001.png": [
+    91.75,
+    30.5
+  ],
+  "GJ_levelComplete_001.png": [
+    379.0,
+    46.5
+  ],
+  "GJ_practiceComplete_001.png": [
+    378.0,
+    39.0
+  ],
+  "GJ_undoBtn_001.png": [
+    38.0,
+    39.5
+  ],
+  "GJ_redoBtn_001.png": [
+    38.0,
+    39.5
+  ],
+  "GJ_resetBtn_001.png": [
+    26.0,
+    27.5
+  ],
+  "GJ_zoomInBtn_001.png": [
+    38.0,
+    39.5
+  ],
+  "GJ_zoomOutBtn_001.png": [
+    38.0,
+    39.5
+  ],
+  "GJ_playMusicBtn_001.png": [
+    38.0,
+    39.5
+  ],
+  "GJ_playEditorBtn_001.png": [
+    38.0,
+    39.5
+  ],
+  "GJ_pauseEditorBtn_001.png": [
+    38.0,
+    39.5
+  ],
+  "GJ_optionsBtn02_001.png": [
+    38.0,
+    39.5
+  ],
+  "GJ_copyBtn2_001.png": [
+    33.0,
+    34.5
+  ],
+  "GJ_pasteBtn2_001.png": [
+    33.0,
+    34.5
+  ],
+  "GJ_duplicateObjectBtn2_001.png": [
+    32.75,
+    34.5
+  ],
+  "GJ_editObjBtn4_001.png": [
+    32.75,
+    34.5
+  ],
+  "GJ_groupIDBtn_001.png": [
+    46.0,
+    47.5
+  ],
+  "GJ_editObjBtn3_001.png": [
+    33.0,
+    34.5
+  ],
+  "GJ_copyStateBtn_001.png": [
+    32.75,
+    34.5
+  ],
+  "GJ_pasteStateBtn_001.png": [
+    33.0,
+    34.5
+  ],
+  "GJ_pasteColorBtn_001.png": [
+    33.0,
+    34.5
+  ],
+  "GJ_editHSVBtn2_001.png": [
+    33.0,
+    34.5
+  ],
+  "GJ_groupIDBtn2_001.png": [
+    33.0,
+    34.5
+  ],
+  "GJ_deSelBtn2_001.png": [
+    33.0,
+    34.5
+  ],
+  "GJ_tabOff_001.png": [
+    32.0,
+    17.5
+  ],
+  "GJ_tabOn_001.png": [
+    32.0,
+    17.5
+  ],
+  "GJ_updateBtn_001.png": [
+    46.0,
+    47.5
+  ],
+  "GJ_viewLevelsBtn_001.png": [
+    46.0,
+    47.0
+  ],
+  "edit_gridBtn_001.png": [
+    16.75,
+    22.0
+  ],
+  "edit_buildBtn_001.png": [
+    30.75,
+    30.0
+  ],
+  "edit_editBtn_001.png": [
+    25.0,
+    30.0
+  ],
+  "edit_deleteBtn_001.png": [
+    31.75,
+    29.5
+  ],
+  "edit_viewBtn_001.png": [
+    27.0,
+    30.0
+  ],
+  "edit_swipeBtn_001.png": [
+    30.5,
+    7.5
+  ],
+  "edit_enableRotateBtn_001.png": [
+    29.0,
+    25.5
+  ],
+  "edit_freeMoveBtn_001.png": [
+    28.0,
+    19.5
+  ],
+  "edit_snapBtn_001.png": [
+    29.0,
+    26.5
+  ],
+  "edit_flipXBtn_001.png": [
+    31.0,
+    15.5
+  ],
+  "edit_flipYBtn_001.png": [
+    15.5,
+    31.0
+  ],
+  "edit_cwBtn_001.png": [
+    26.5,
+    30.5
+  ],
+  "edit_ccwBtn_001.png": [
+    27.5,
+    30.5
+  ],
+  "edit_rotate45lBtn_001.png": [
+    25.0,
+    27.5
+  ],
+  "edit_rotate45rBtn_001.png": [
+    25.0,
+    27.5
+  ],
+  "edit_freeRotateBtn_001.png": [
+    25.0,
+    28.0
+  ],
+  "edit_rotateSnapBtn_001.png": [
+    25.0,
+    27.5
+  ],
+  "edit_upBtn_001.png": [
+    21.0,
+    14.5
+  ],
+  "edit_upBtn2_001.png": [
+    18.5,
+    20.0
+  ],
+  "edit_upBtn3_001.png": [
+    18.5,
+    20.0
+  ],
+  "edit_upBtn5_001.png": [
+    21.0,
+    14.5
+  ],
+  "edit_downBtn_001.png": [
+    21.0,
+    14.5
+  ],
+  "edit_downBtn2_001.png": [
+    18.5,
+    20.0
+  ],
+  "edit_downBtn3_001.png": [
+    18.75,
+    20.0
+  ],
+  "edit_downBtn5_001.png": [
+    21.0,
+    14.5
+  ],
+  "edit_leftBtn_001.png": [
+    14.5,
+    21.0
+  ],
+  "edit_rightBtn_001.png": [
+    14.5,
+    21.0
+  ],
+  "edit_scaleBtn_001.png": [
+    27.0,
+    15.0
+  ],
+  "edit_scaleXYBtn_001.png": [
+    27.0,
+    25.5
+  ],
+  "edit_warpBtn_001.png": [
+    26.5,
+    26.0
+  ],
+  "edit_vLine_001.png": [
+    1.5,
+    79.0
+  ],
+  "edit_eChangeBG_001.png": [
+    25.0,
+    41.5
+  ],
+  "edit_groundBtn_001.png": [
+    26.0,
+    21.5
+  ],
+  "edit_objInfoBtn_001.png": [
+    21.75,
+    22.0
+  ],
+  "GJ_colorBtn_001.png": [
+    35.5,
+    36.5
+  ],
+  "GJ_plainBtn_001.png": [
+    46.0,
+    47.0
+  ],
+  "GJ_audioOffBtn_001.png": [
+    38.0,
+    39.5
+  ],
+  "GJ_helpBtn_001.png": [
+    38.0,
+    39.5
+  ],
+  "GJ_goToLayerBtn_001.png": [
+    32.75,
+    34.5
+  ],
+  "GJ_sSettingsIcon_001.png": [
+    16.5,
+    17.5
+  ],
+  "GJ_sExportIcon_001.png": [
+    14.5,
+    14.5
+  ],
+  "GJ_sSFXIcon_001.png": [
+    16.5,
+    17.0
+  ],
+  "GJ_sSaveIcon_001.png": [
+    14.0,
+    15.5
+  ],
+  "GJ_sAudioDLIcon_001.png": [
+    13.0,
+    15.5
+  ],
+  "GJ_sHelpIcon_001.png": [
+    15.5,
+    13.0
+  ],
+  "GJ_deleteIcon_001.png": [
+    24.0,
+    24.0
+  ],
+  "edit_delBtn_001.png": [
+    18.0,
+    25.0
+  ],
+  "edit_findBtn_001.png": [
+    20.0,
+    20.0
+  ],
+  "GJ_deleteAllIcon_001.png": [
+    26.5,
+    11.5
+  ],
+  "deleteFilter_none_001.png": [
+    20.5,
+    26.0
+  ],
+  "deleteFilter_static_001.png": [
+    26.5,
+    26.25
+  ],
+  "deleteFilter_details_001.png": [
+    26.0,
+    26.25
+  ],
+  "deleteFilter_custom_001.png": [
+    27.5,
+    26.0
+  ],
+  "boost_01_001.png": [
+    35.0,
+    43.5
+  ],
+  "background.png": [
+    512.0,
+    512.0
+  ],
+  "ground.png": [
+    128.0,
+    128.0
+  ],
+  "gradient.png": [
+    15.0,
+    160.0
+  ],
+  "slidergroove.png": [
+    210.0,
+    16.0
+  ],
+  "sliderthumb.png": [
+    38.0,
+    38.0
+  ],
+  "sliderBar.png": [
+    32.0,
+    8.0
+  ],
+  "GJ_button_01.png": [
+    40.0,
+    40.0
+  ],
+  "GJ_button_02.png": [
+    40.0,
+    40.0
+  ],
+  "GJ_button_04.png": [
+    40.0,
+    40.0
+  ],
+  "GJ_button_05.png": [
+    40.0,
+    40.0
+  ],
+  "GJ_square_01.png": [
+    80.0,
+    80.0
+  ],
+  "GJ_square_07.png": [
+    80.0,
+    80.0
+  ],
+  "dialog_panel.png": [
+    94.0,
+    94.0
+  ],
+  "editor_green.png": [
+    195.0,
+    28.0
+  ],
+  "editor_gray.png": [
+    80.0,
+    26.0
+  ],
+  "editor_time.png": [
+    35.0,
+    145.0
   ]
 }

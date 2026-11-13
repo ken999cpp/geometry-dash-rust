@@ -75,7 +75,7 @@ impl LevelObject {
             ))
     }
     pub fn size(&self) -> Point {
-        match self.kind.as_str() {
+        let size = match self.kind.as_str() {
             "platform" => Point::new(constants::BLOCK_SIZE, constants::PLATFORM_HEIGHT),
             "minispike" => Point::new(constants::BLOCK_SIZE, constants::MINISPIKE_HEIGHT),
             "jump_pad" => Point::new(constants::JUMP_PAD_WIDTH, constants::BLOCK_SIZE),
@@ -84,7 +84,20 @@ impl LevelObject {
             }
             "trigger" | "end_level" => Point::new(constants::TRIGGER_WIDTH, constants::BLOCK_SIZE),
             _ => Point::new(constants::BLOCK_SIZE, constants::BLOCK_SIZE),
-        }
+        };
+        let scale = self.scale();
+        Point::new(size.x * scale.x, size.y * scale.y)
+    }
+    pub fn scale(&self) -> Point {
+        let axis = |key| {
+            self.extra
+                .get(key)
+                .and_then(|v| v.as_f64())
+                .filter(|v| v.is_finite())
+                .unwrap_or(1.)
+                .clamp(0.1, 4.)
+        };
+        Point::new(axis("scale_x"), axis("scale_y"))
     }
     /// JSON uses bottom-left positions with Y increasing upward.
     pub fn rect(&self) -> Rect {
@@ -151,8 +164,26 @@ impl LevelObject {
                 Point::new(0., constants::JUMP_PAD_HITBOX_OFFSET_Y),
                 Point::new(constants::JUMP_PAD_WIDTH, constants::JUMP_PAD_HITBOX_HEIGHT),
             ),
-            _ => (Point::default(), self.size()),
+            _ => return r,
         };
+        let scale = self.scale();
+        let sign = |key| {
+            if self
+                .extra
+                .get(key)
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                -1.
+            } else {
+                1.
+            }
+        };
+        let offset = Point::new(
+            offset.x * scale.x * sign("flip_x"),
+            offset.y * scale.y * sign("flip_y"),
+        );
+        let size = Point::new(size.x * scale.x, size.y * scale.y);
         let [a, b] = r.axes();
         r.center = r.center + a * offset.x + b * offset.y;
         r.half = size * 0.5;
@@ -185,6 +216,33 @@ fn default_background() -> String {
     "assets/background/stereomadness_bw.png".into()
 }
 impl Level {
+    pub fn initial_color(&self, ground: bool, default: [f32; 4]) -> [f32; 4] {
+        let Some(value) = self
+            .extra
+            .get(if ground {
+                "ground_color"
+            } else {
+                "background_color"
+            })
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.strip_prefix('#'))
+            .and_then(|s| {
+                if s.len() == 6 {
+                    u32::from_str_radix(s, 16).ok()
+                } else {
+                    None
+                }
+            })
+        else {
+            return default;
+        };
+        [
+            ((value >> 16) & 255) as f32 / 255.,
+            ((value >> 8) & 255) as f32 / 255.,
+            (value & 255) as f32 / 255.,
+            1.,
+        ]
+    }
     pub fn empty(name: &str) -> Self {
         Self {
             name: name.into(),

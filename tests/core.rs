@@ -1186,3 +1186,103 @@ fn editor_mode_switching_keeps_the_build_tool_and_snap_is_independent() {
     editor.snap_to_grid = false;
     assert_eq!(editor.snap(Point::new(95., 450.)), Point::new(95., 450.));
 }
+
+#[test]
+fn editor_box_selection_clipboard_and_delete_preserve_data_and_undo_atomically() {
+    let mut doc = Level::empty("Clipboard");
+    let mut a = LevelObject::new("block", 80., 400.);
+    a.extra
+        .insert("custom_data".into(), serde_json::json!({"keep":[1,2,3]}));
+    doc.objects = vec![
+        a,
+        LevelObject::new("spike", 240., 480.),
+        LevelObject::new("block", 1600., 400.),
+    ];
+    let original = doc.clone();
+    let mut editor = Editor::new(doc, None);
+    editor.select_rect(Point::new(0., 350.), Point::new(400., 600.));
+    assert_eq!(editor.selection(), vec![0, 1]);
+    editor.copy();
+    editor.camera = Point::new(800., 800.);
+    editor.paste();
+    assert_eq!(editor.selection(), vec![3, 4]);
+    assert_eq!(editor.level.objects[4].x - editor.level.objects[3].x, 160.);
+    assert_eq!(editor.level.objects[4].y - editor.level.objects[3].y, 80.);
+    assert_eq!(editor.level.objects[3].extra, original.objects[0].extra);
+    let pasted = editor.level.clone();
+    editor.delete();
+    assert_eq!(editor.level, original);
+    editor.undo();
+    assert_eq!(editor.level, pasted);
+    editor.undo();
+    assert_eq!(editor.level, original);
+    editor.redo();
+    assert_eq!(editor.level, pasted);
+}
+
+#[test]
+fn editor_scale_layers_and_flips_match_collision_geometry() {
+    let mut editor = Editor::new(Level::empty("Transforms"), None);
+    editor.choose_tool(4);
+    editor.place(Point::new(80., 400.));
+    let before = editor.level.objects[0].rect().center;
+    let old_hitbox = editor.level.objects[0].hitbox();
+    editor.set_scale(2., 0.5);
+    let object = &editor.level.objects[0];
+    assert_eq!(object.rect().center, before);
+    assert_eq!(
+        object.hitbox().half,
+        Point::new(old_hitbox.half.x * 2., old_hitbox.half.y * 0.5)
+    );
+    let offset = object.hitbox().center.y - before.y;
+    editor.flip(false);
+    assert!((editor.level.objects[0].hitbox().center.y - before.y + offset).abs() < 1e-10);
+    editor.layer = 3;
+    editor.show_all_layers = false;
+    assert!(!editor.object_visible(&editor.level.objects[0]));
+    editor.place(Point::new(400., 400.));
+    assert!(editor.object_visible(&editor.level.objects[1]));
+    editor.select_rect(Point::new(0., 0.), Point::new(2000., 2000.));
+    assert_eq!(editor.selection(), vec![1]);
+}
+
+#[test]
+fn initial_level_colors_survive_restart_and_invalid_colors_use_defaults() {
+    let mut doc = level();
+    doc.extra
+        .insert("background_color".into(), "#4080ff".into());
+    doc.extra.insert("ground_color".into(), "#invalid".into());
+    let mut sim = Simulation::new(doc).unwrap();
+    let expected = [64. / 255., 128. / 255., 1., 1.];
+    assert_eq!(sim.state.background.current, expected);
+    assert_eq!(sim.state.ground.current, [0.03, 0.08, 0.4, 1.]);
+    run(&mut sim, 10, TickInput::default());
+    sim.restart(false);
+    assert_eq!(sim.state.background.current, expected);
+}
+
+#[test]
+fn editor_bulk_delete_respects_layer_and_filter_and_undo_restores_every_object() {
+    let mut doc = Level::empty("Delete filters");
+    let mut hidden = LevelObject::new("block", 0., 400.);
+    hidden.extra.insert("editor_layer".into(), 3.into());
+    doc.objects = vec![
+        LevelObject::new("block", 0., 400.),
+        LevelObject::new("spike", 80., 400.),
+        LevelObject::new("start_pos", 160., 400.),
+        hidden,
+    ];
+    let original = doc.clone();
+    let mut editor = Editor::new(doc, None);
+    editor.delete_filter = Some("solid".into());
+    editor.delete_all(false);
+    assert_eq!(editor.level.objects.len(), 3);
+    assert_eq!(editor.level.objects[0].kind, "spike");
+    editor.undo();
+    assert_eq!(editor.level, original);
+    editor.delete_all(true);
+    assert_eq!(editor.level.objects.len(), 3);
+    assert!(!editor.level.objects.iter().any(|o| o.kind == "start_pos"));
+    editor.undo();
+    assert_eq!(editor.level, original);
+}

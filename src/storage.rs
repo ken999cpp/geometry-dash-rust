@@ -40,6 +40,7 @@ pub enum MusicChannel {
     Menu,
     Level,
     Sfx,
+    EditorSfx,
 }
 pub const FPS_LIMITS: [u32; 4] = [60, 120, 144, 240];
 
@@ -52,6 +53,22 @@ pub struct Settings {
     pub level_music_volume: u8,
     pub fps_limit: u32,
     pub sfx_volume: u8,
+    pub show_cursor: bool,
+    pub flip_pause_button: bool,
+    pub show_fps: bool,
+    pub show_percentage: bool,
+    pub show_progress_bar: bool,
+    pub show_time: bool,
+    pub menu_music_enabled: bool,
+    pub fullscreen: bool,
+    pub borderless: bool,
+    pub resolution: usize,
+    pub vsync: bool,
+    pub auto_retry: bool,
+    pub faster_reset: bool,
+    pub lock_cursor: bool,
+    pub editor_auto_save: bool,
+    pub editor_sfx_volume: u8,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -62,6 +79,22 @@ impl Default for Settings {
             level_music_volume: 100,
             fps_limit: 60,
             sfx_volume: 100,
+            show_cursor: false,
+            flip_pause_button: false,
+            show_fps: true,
+            show_percentage: true,
+            show_progress_bar: false,
+            show_time: false,
+            menu_music_enabled: true,
+            fullscreen: false,
+            borderless: false,
+            resolution: 1,
+            vsync: false,
+            auto_retry: true,
+            faster_reset: false,
+            lock_cursor: false,
+            editor_auto_save: false,
+            editor_sfx_volume: 100,
         }
     }
 }
@@ -79,6 +112,7 @@ impl Settings {
             MusicChannel::Menu => self.menu_music_volume,
             MusicChannel::Level => self.level_music_volume,
             MusicChannel::Sfx => self.sfx_volume,
+            MusicChannel::EditorSfx => self.editor_sfx_volume,
         }
         .min(100)
     }
@@ -87,6 +121,7 @@ impl Settings {
             MusicChannel::Menu => &mut self.menu_music_volume,
             MusicChannel::Level => &mut self.level_music_volume,
             MusicChannel::Sfx => &mut self.sfx_volume,
+            MusicChannel::EditorSfx => &mut self.editor_sfx_volume,
         };
         let value = value.min(100);
         let changed = *volume != value;
@@ -111,7 +146,12 @@ impl Profile {
         }
         let mut profile: Self = serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
-        for channel in [MusicChannel::Menu, MusicChannel::Level, MusicChannel::Sfx] {
+        for channel in [
+            MusicChannel::Menu,
+            MusicChannel::Level,
+            MusicChannel::Sfx,
+            MusicChannel::EditorSfx,
+        ] {
             profile
                 .settings
                 .set_volume(channel, profile.settings.volume(channel));

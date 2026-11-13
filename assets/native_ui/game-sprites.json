@@ -1,0 +1,370 @@
+{
+  "cube/Cube001.png": [
+    30.25,
+    30.0
+  ],
+  "cube/Cube001_small.png": [
+    30.25,
+    30.0
+  ],
+  "cube/Cube002.png": [
+    30.25,
+    30.0
+  ],
+  "cube/Cube002_small.png": [
+    30.25,
+    30.0
+  ],
+  "ship/Ship001.png": [
+    37.25,
+    22.5
+  ],
+  "wave/Wave001.png": [
+    25.5,
+    20.5
+  ],
+  "ball/Ball001.png": [
+    35.25,
+    35.0
+  ],
+  "robot/Robot_run_001.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_002.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_003.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_004.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_005.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_006.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_007.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_008.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_009.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_010.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_011.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_012.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_013.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_014.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_015.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_run_016.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_jump_loop_001.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_jump_loop_002.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_jump_loop_003.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_jump_loop_004.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_jump_loop_005.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_fall_loop_001.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_fall_loop_002.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_fall_loop_003.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_fall_loop_004.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_fall_loop_005.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot_idle_001.png": [
+    48.0,
+    48.0
+  ],
+  "robot/Robot001.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider_idle_001.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider001.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider_run_001.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider_run_002.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider_run_003.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider_run_004.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider_run_005.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider_run_006.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider_run_007.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider_fall_loop_001.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider_fall_loop_002.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider_fall_loop_003.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider_fall_loop_004.png": [
+    48.0,
+    48.0
+  ],
+  "spider/Spider_fall_loop_005.png": [
+    48.0,
+    48.0
+  ],
+  "spikes/spike.png": [
+    30.0,
+    30.0
+  ],
+  "spikes/minispike.png": [
+    30.0,
+    13.5
+  ],
+  "orbs/yellow_orb.png": [
+    30.0,
+    30.0
+  ],
+  "checkpoint.png": [
+    17.0,
+    31.5
+  ],
+  "normal_level_complete_text.png": [
+    379.0,
+    46.5
+  ],
+  "practice_level_complete_text.png": [
+    378.0,
+    39.0
+  ],
+  "jump_pads/jump_pad.png": [
+    30.0,
+    30.0
+  ],
+  "menubuttons/m_m_settings_btn.png": [
+    50.5,
+    53.75
+  ],
+  "menubuttons/mm_iconsbtn.png": [
+    70.0,
+    70.0
+  ],
+  "menubuttons/mm_playbtn.png": [
+    109.5,
+    109.5
+  ],
+  "menubuttons/mm_editorbtn.png": [
+    70.0,
+    70.0
+  ],
+  "menubuttons/pm_editorbtn.png": [
+    78.0,
+    81.5
+  ],
+  "menubuttons/pm_practicebtn.png": [
+    61.5,
+    64.5
+  ],
+  "menubuttons/pm_unpracticebtn.png": [
+    61.5,
+    64.5
+  ],
+  "menubuttons/pm_playbtn.png": [
+    78.5,
+    81.5
+  ],
+  "menubuttons/pm_menubtn.png": [
+    61.5,
+    64.5
+  ],
+  "menubuttons/pm_restartbtn.png": [
+    61.5,
+    64.5
+  ],
+  "ui/star.png": [
+    23.5,
+    24.25
+  ],
+  "blocks/block1.png": [
+    30.0,
+    30.0
+  ],
+  "blocks/block2.png": [
+    30.0,
+    30.0
+  ],
+  "blocks/block3.png": [
+    30.0,
+    30.0
+  ],
+  "blocks/block4.png": [
+    30.0,
+    30.0
+  ],
+  "blocks/block5.png": [
+    30.0,
+    30.0
+  ],
+  "blocks/block6.png": [
+    30.0,
+    30.0
+  ],
+  "blocks/block11.png": [
+    30.0,
+    30.0
+  ],
+  "blocks/block7.png": [
+    30.0,
+    30.0
+  ],
+  "blocks/block8.png": [
+    30.0,
+    30.0
+  ],
+  "blocks/block9.png": [
+    30.0,
+    30.0
+  ],
+  "blocks/block10.png": [
+    30.0,
+    30.0
+  ],
+  "portals/CubePortalback.png": [
+    49.0,
+    85.5
+  ],
+  "portals/CubePortalfront.png": [
+    49.0,
+    85.5
+  ],
+  "portals/ShipPortalback.png": [
+    49.0,
+    85.5
+  ],
+  "portals/ShipPortalfront.png": [
+    49.0,
+    85.5
+  ],
+  "portals/WavePortalback.png": [
+    49.0,
+    85.5
+  ],
+  "portals/WavePortalfront.png": [
+    49.0,
+    85.5
+  ],
+  "portals/BallPortalback.png": [
+    49.0,
+    85.5
+  ],
+  "portals/BallPortalfront.png": [
+    49.0,
+    85.5
+  ],
+  "portals/BallPortal.png": [
+    49.0,
+    85.5
+  ],
+  "portals/RobotPortalback.png": [
+    48.75,
+    85.5
+  ],
+  "portals/RobotPortalfront.png": [
+    48.75,
+    85.5
+  ],
+  "portals/SpiderPortalback.png": [
+    46.0,
+    84.5
+  ],
+  "portals/SpiderPortalfront.png": [
+    46.0,
+    84.5
+  ],
+  "portals/SpiderPortal.png": [
+    46.0,
+    84.5
+  ]
+}

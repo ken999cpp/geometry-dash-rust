@@ -31,26 +31,25 @@ the executable finds them in the Cargo project automatically. Set
 | --- | --- |
 | Main menu | Left: icon kit; center: levels; right: create a level |
 | Level selection | Left/Right arrows or page dots: browse; click the title, Enter or Space: play; tools button: edit |
-| Main menu exit | Esc: open exit confirmation; Esc again or Cancel: dismiss; Enter or Exit: quit |
+| Main menu exit | Esc: open Quit Game; Esc again or Cancel: dismiss; Enter or Yes: quit |
 | Gameplay | Space, Up, or left mouse: action; Esc, P or pause icon: pause; R: restart |
 | Pause | Esc: return to the same level page (editor after playtesting); P or play button: resume |
 | Practice | Z: add checkpoint; X: remove checkpoint |
 | Settings | Gear in the main menu, level selection or pause; Esc/Done: save and close |
 | Editor | Bottom modes: build, select/move, delete; bottom categories: objects and triggers |
 | Editor camera | WASD, middle/right drag: pan; wheel: zoom; 0: reset zoom |
-| Editor objects | Arrows: move 80 units; Shift+arrow: move 1 unit; R/T: rotate 2.5° |
-| Editor commands | Delete; Ctrl+D: duplicate; Ctrl+Z: undo; Ctrl+Shift+Z / Ctrl+Y: redo; G: toggle grid |
+| Editor objects | Arrows: move by selected step; Shift+arrow: move 1 unit; R/T: rotate 2.5° |
+| Editor commands | Delete; Ctrl+C/Ctrl+V: copy/paste; Ctrl+D: duplicate; Ctrl+Z: undo; Ctrl+Shift+Z / Ctrl+Y: redo; G: toggle grid |
 | Editor files | Ctrl+O: open; Ctrl+S: save; Ctrl+Shift+S: save as; F5: test |
 | Start position | E: edit selected/paused level; Triggers → START POS; select marker, M: mode, V: gravity; F5: test from marker |
 | Path/settings dialogs | Type a value; Ctrl+A: replace all; Enter: apply; Esc or close icon: cancel |
 
-Editor buttons use artwork or vector icons; hover to see their function and
-shortcut. The bottom palette contains the original 11 block textures and object
-categories. The right tools include rotation, triggers, grid visibility and grid
-snapping. The top gear opens file/name/music/background settings. Trigger values
-use `#RRGGBB alpha duration_seconds`. Editor Exit or Esc opens a confirmation with
-Cancel and Exit; New requires a second click when edits would be discarded.
-See [editor controls](docs/editor.md).
+Editor menus use the installed original's sprites and bitmap fonts. Build/Edit/Delete,
+the bottom palette, transforms, clipboard, layers, native pause menu and Exit
+No/Yes confirmation follow the original layout. Escape opens editor pause; Exit
+asks before discarding. Save and Exit/Play stop if saving fails. The gear opens
+level settings; the wrench opens file controls. Unavailable original object
+categories and advanced features remain disabled. See [editor controls](docs/editor.md).
 
 Robot jumps higher while held (up to about 0.278 seconds of assistance). Ball changes
 gravity on a press while grounded. Spider switches to the nearest opposite solid
@@ -74,21 +73,25 @@ menus and gameplay, with the ground rendered above the background. The menu cube
 uses the gameplay jump impulse, gravity and running speed.
 
 Level ratings use a PNG star. Ball, spider and their portals have dedicated PNG
-sprites; checkpoints and the ship's cube rider use the original artwork. Generated
-asset paths and prompts are in [sprite notes](docs/sprite-prompts.md). The exit dialog
-uses bundled Liberation Sans for Cyrillic text, with its license in `assets/fonts/`.
+sprites; checkpoints and the ship's cube rider use the original artwork. Native gameplay frames and robot/spider poses can be re-imported with
+`python scripts/import_native_game.py`; see [interface reference](docs/interface-reference.md).
+Quit Game and editor Exit use the native silver frame and bitmap fonts. Typed
+path/value dialogs use bundled Liberation Sans, licensed in `assets/fonts/`.
 
 Game settings are saved automatically. No Death Effect hides death particles
 while retaining the restart delay. Hide Checkpoint Buttons hides the practice
-HUD controls; Z/X and checkpoint markers remain available. Two volume sliders
-control menu and level music independently, including mute at 0%.
+HUD controls; Z/X and checkpoint markers remain available. Music and SFX sliders use the original artwork. The Audio tab controls menu,
+level and SFX volume independently, including mute at 0%.
 FPS options are 60, 120, 144 and 240, capped by the current monitor's refresh rate.
 Unavailable options are disabled; moving the window to a slower monitor lowers and
 saves the limit automatically. Unknown refresh rates use a conservative 60 FPS
 limit, with VSync retained. Rendering limits do not change the 240 Hz physics tick.
 The renderer waits before presenting each frame to enforce the selected limit,
 including after a slow frame. Changes apply to the next rendered frame.
-The star counter always appears in menus; its former visibility option is ignored in old profiles.
+Settings uses the original main panel, Options tabs and Video Options/Advanced
+pages. Graphics changes use Apply; Escape returns one page. HUD options control
+FPS, percentage, time, progress and pause-button side. The old star-counter
+visibility field is ignored; level ratings remain visible on level selection.
 Normal completion awards a level's stars once; practice,
 editor playtests and repeat completions award no additional stars. Existing normal
 completions are imported. The bundled levels award 1, 2 and 3 stars; custom JSON
@@ -100,7 +103,7 @@ Returning directly from pause still opens the page of the level just played.
 
 ## Files and compatibility
 
-Bundled levels are templates. Saving an edited template asks for a writable copy.
+Bundled levels are templates. Saving an edited template writes a user copy.
 User levels, imported assets, statistics and icon selection are stored under:
 
 - Linux: `$XDG_DATA_HOME/geometry-dash-rust`, defaulting to `~/.local/share/geometry-dash-rust`.

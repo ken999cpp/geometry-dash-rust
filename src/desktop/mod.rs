@@ -1,6 +1,5 @@
 mod attempt;
 mod audio;
-mod editor_icons;
 mod editor_ui;
 mod frame_rate;
 mod input;
@@ -60,6 +59,11 @@ pub enum Field {
     Rotation,
     Trigger,
     Name,
+    ObjectScale,
+    ObjectGroups,
+    EditorLayer,
+    LevelColor(bool),
+    EditorStep,
 }
 pub struct Prompt {
     pub field: Field,
@@ -91,6 +95,8 @@ pub struct Game {
     pub exit_dialog: Option<ExitTarget>,
     pub exit_requested: bool,
     pub settings_open: bool,
+    settings_page: settings::Page,
+    settings_video: settings::VideoOptions,
     display_rate: frame_rate::DisplayRate,
     suppress_action_until_release: bool,
     attempt: attempt::AttemptFlow,
@@ -132,6 +138,8 @@ impl Game {
             exit_dialog: None,
             exit_requested: false,
             settings_open: false,
+            settings_page: Default::default(),
+            settings_video: Default::default(),
             display_rate: Default::default(),
             suppress_action_until_release: false,
             attempt: Default::default(),
@@ -220,7 +228,7 @@ impl Game {
             return;
         }
         if self.settings_open {
-            self.close_settings();
+            self.settings_back();
             return;
         }
         if self.prompt.take().is_some() {
@@ -239,7 +247,22 @@ impl Game {
             Screen::Paused => self.leave_level(),
             Screen::Levels | Screen::Icons => self.screen(Screen::Menu),
             Screen::Loading | Screen::Complete => self.leave_level(),
-            Screen::Editor => self.exit_editor(),
+            Screen::Editor => {
+                if let Some(editor) = self.editor.as_mut() {
+                    if editor.files_open {
+                        editor.files_open = false;
+                    } else if editor.start_settings_open {
+                        editor.start_settings_open = false;
+                    } else if editor.settings_open {
+                        editor.settings_open = false;
+                    } else if editor.view_only {
+                        editor.view_only = false;
+                    } else {
+                        editor.pause_open = !editor.pause_open;
+                    }
+                }
+                self.ui_dirty = true;
+            }
         }
     }
     pub fn exit_editor(&mut self) {
@@ -275,6 +298,8 @@ impl Game {
             self.screen(Screen::Paused);
         }
         self.settings_open = true;
+        self.settings_page = Default::default();
+        self.settings_video = settings::VideoOptions::from(&self.profile.settings);
         self.input = Default::default();
         self.ui_dirty = true;
     }
@@ -283,6 +308,14 @@ impl Game {
         self.suppress_action_until_release = true;
         self.persist();
         self.ui_dirty = true;
+    }
+    pub fn settings_back(&mut self) {
+        if self.settings_page == settings::Page::Main {
+            self.close_settings();
+        } else {
+            self.settings_page = self.settings_page.parent();
+            self.ui_dirty = true;
+        }
     }
     pub fn leave_level(&mut self) {
         if self.testing && self.editor.is_some() {
@@ -451,12 +484,17 @@ impl Game {
         self.testing = false;
         self.screen(Screen::Editor);
     }
-    pub fn save_editor(&mut self, save_as: bool) {
+    pub fn save_editor(&mut self, save_as: bool) -> bool {
         let Some(editor) = self.editor.as_ref() else {
-            return;
+            return false;
         };
-        let path = editor.path.clone().filter(|p| p.starts_with(&self.root));
-        if save_as || path.is_none() {
+        let name = editor.level.name.replace(['/', '\\'], "_");
+        let path = editor
+            .path
+            .clone()
+            .filter(|p| p.starts_with(&self.root))
+            .unwrap_or_else(|| self.root.join("levels").join(format!("{name}.json")));
+        if save_as {
             let name = editor.level.name.replace(['/', '\\'], "_");
             self.prompt = Some(Prompt {
                 field: Field::SaveAs,
@@ -469,11 +507,27 @@ impl Game {
                 label: "Save level as (JSON path)",
             });
             self.ui_dirty = true;
-            return;
+            return false;
         }
-        let result = self.editor.as_mut().unwrap().save(path.unwrap());
+        let result = self.editor.as_mut().unwrap().save(path);
+        let saved = result.is_ok();
         self.report(result, "Level saved");
         self.refresh();
+        saved
+    }
+    pub fn save_editor_then(&mut self, play: bool, exit: bool) {
+        if !self.save_editor(false) {
+            return;
+        }
+        if play {
+            if let Some(editor) = self.editor.as_mut() {
+                editor.pause_open = false;
+            }
+            self.start(true);
+        } else if exit {
+            self.exit_dialog = Some(ExitTarget::Editor);
+            self.confirm_dialog_exit();
+        }
     }
     pub fn open_prompt(&mut self, field: Field) {
         let Some(e) = &self.editor else {
@@ -498,6 +552,58 @@ impl Game {
             ),
             Field::Rotation => (e.rotation.to_string(), "Rotation in degrees"),
             Field::Name => (e.level.name.clone(), "Level name"),
+            Field::EditorStep => (
+                format!("{}", e.move_step / crate::constants::GD_SCALE),
+                "Custom movement step (native units, 0.1 to 300)",
+            ),
+            Field::LevelColor(ground) => (
+                e.level
+                    .extra
+                    .get(if ground {
+                        "ground_color"
+                    } else {
+                        "background_color"
+                    })
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(if ground { "#0066ff" } else { "#287dff" })
+                    .to_owned(),
+                "Level color: #RRGGBB",
+            ),
+            Field::ObjectScale => {
+                let scale = e
+                    .selected
+                    .map(|i| e.level.objects[i].scale())
+                    .unwrap_or(crate::geometry::Point::new(1., 1.));
+                (
+                    format!("{} {}", scale.x, scale.y),
+                    "Object scale: X Y (0.1 to 4)",
+                )
+            }
+            Field::ObjectGroups => {
+                let groups = e
+                    .selected
+                    .and_then(|i| e.level.objects[i].extra.get("groups"))
+                    .and_then(|v| v.as_array())
+                    .map(|v| {
+                        v.iter()
+                            .map(|n| n.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default();
+                (
+                    groups,
+                    "Object group IDs: comma-separated numbers (1 to 9999)",
+                )
+            }
+            Field::EditorLayer => (
+                e.selected
+                    .and_then(|i| e.level.objects[i].extra.get("editor_layer"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(e.layer as i64)
+                    .to_string(),
+                "Editor layer (0 to 999)",
+            ),
             Field::Trigger => {
                 let Some(o) = e
                     .selected
@@ -616,6 +722,86 @@ impl Game {
                     editor.remember();
                     editor.level.name = value.into();
                 }
+                Field::EditorStep => {
+                    let step = value
+                        .parse::<f64>()
+                        .map_err(|_| "Enter a finite movement step")?;
+                    if !step.is_finite() || !(0.1..=300.).contains(&step) {
+                        return Err("Step must be between 0.1 and 300".into());
+                    }
+                    editor.move_step = step * crate::constants::GD_SCALE;
+                }
+                Field::LevelColor(ground) => {
+                    if value.len() != 7
+                        || !value.starts_with('#')
+                        || u32::from_str_radix(&value[1..], 16).is_err()
+                    {
+                        return Err("Color must be #RRGGBB".into());
+                    }
+                    editor.remember();
+                    editor.level.extra.insert(
+                        if ground {
+                            "ground_color"
+                        } else {
+                            "background_color"
+                        }
+                        .into(),
+                        value.into(),
+                    );
+                }
+                Field::ObjectScale => {
+                    let values = value
+                        .split_whitespace()
+                        .map(|v| v.parse::<f64>().map_err(|_| "Enter X and Y scale"))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    if values.is_empty()
+                        || values.len() > 2
+                        || values
+                            .iter()
+                            .any(|v| !v.is_finite() || !(0.1..=4.).contains(v))
+                    {
+                        return Err("Scale must be between 0.1 and 4".into());
+                    }
+                    editor.set_scale(values[0], *values.get(1).unwrap_or(&values[0]));
+                }
+                Field::ObjectGroups => {
+                    let mut groups = value
+                        .split(|c: char| c == ',' || c.is_whitespace())
+                        .filter(|s| !s.is_empty())
+                        .map(|v| v.parse::<u32>().map_err(|_| "Use numeric group IDs"))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    if groups.iter().any(|g| !(1..=9999).contains(g)) {
+                        return Err("Group IDs must be between 1 and 9999".into());
+                    }
+                    groups.sort_unstable();
+                    groups.dedup();
+                    let ids = editor.selection();
+                    if !ids.is_empty() {
+                        editor.remember();
+                        for i in ids {
+                            editor.level.objects[i]
+                                .extra
+                                .insert("groups".into(), serde_json::json!(groups));
+                        }
+                    }
+                }
+                Field::EditorLayer => {
+                    let layer = value.parse::<i32>().map_err(|_| "Enter an editor layer")?;
+                    if !(0..=999).contains(&layer) {
+                        return Err("Layer must be between 0 and 999".into());
+                    }
+                    let ids = editor.selection();
+                    if ids.is_empty() {
+                        editor.layer = layer;
+                    } else {
+                        editor.remember();
+                        for i in ids {
+                            editor.level.objects[i]
+                                .extra
+                                .insert("editor_layer".into(), layer.into());
+                        }
+                    }
+                }
                 Field::Trigger => {
                     let fields = value.split_whitespace().collect::<Vec<_>>();
                     if fields.len() != 3 {
@@ -707,6 +893,7 @@ pub fn run() {
         ))
         .add_systems(FixedUpdate, step)
         .add_systems(PreUpdate, attempt::advance)
+        .add_systems(PreUpdate, editor_ui::sync_test_rate)
         .add_systems(Last, exit_application)
         .run();
 }
@@ -779,6 +966,42 @@ fn exit_application(mut game: ResMut<Game>, mut exits: MessageWriter<bevy::app::
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn editor_save_transitions_require_success_and_preserve_the_document_on_error() {
+        let root = std::env::temp_dir().join(format!("gd-editor-save-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("levels"), b"blocked directory").unwrap();
+        let mut game = Game::new(root.clone());
+        game.root = root.clone();
+        game.editor = Some(Editor::new(Level::empty("Save test"), None));
+        game.screen(Screen::Editor);
+        let editor = game.editor.as_mut().unwrap();
+        editor.dirty = true;
+        editor.pause_open = true;
+        let original = editor.level.clone();
+        for play in [false, true] {
+            game.save_editor_then(play, !play);
+            assert_eq!(game.screen, Screen::Editor);
+            let editor = game.editor.as_ref().unwrap();
+            assert!(editor.pause_open && editor.dirty);
+            assert_eq!(editor.level, original);
+            assert!(!game.status.is_empty());
+        }
+        std::fs::remove_file(root.join("levels")).unwrap();
+        game.save_editor_then(true, false);
+        assert!(game.testing);
+        assert!(!game.editor.as_ref().unwrap().dirty);
+        assert_eq!(
+            Level::load(&root.join("levels/Save test.json")).unwrap(),
+            original
+        );
+        game.screen(Screen::Editor);
+        game.editor.as_mut().unwrap().pause_open = true;
+        game.save_editor_then(false, true);
+        assert_eq!(game.screen, Screen::Menu);
+        assert!(game.editor.is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn level_browsing_restarts_at_the_first_page_after_visiting_main_menu() {
         let mut game = Game::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")));

@@ -293,7 +293,7 @@ impl Simulation {
             })
             .collect::<Vec<_>>();
         let length = level.length();
-        let state = Self::initial(level.objects.len());
+        let state = Self::initial(&level);
         let mut sim = Self {
             level,
             start_state: state.clone(),
@@ -319,12 +319,12 @@ impl Simulation {
         sim.start_state = sim.state.clone();
         Ok(sim)
     }
-    fn initial(count: usize) -> Snapshot {
+    fn initial(level: &Level) -> Snapshot {
         Snapshot {
             player: Player::default(),
-            active: vec![false; count],
-            background: ColorTween::new([0.12, 0.2, 0.8, 1.]),
-            ground: ColorTween::new([0.03, 0.08, 0.4, 1.]),
+            active: vec![false; level.objects.len()],
+            background: ColorTween::new(level.initial_color(false, [0.12, 0.2, 0.8, 1.])),
+            ground: ColorTween::new(level.initial_color(true, [0.03, 0.08, 0.4, 1.])),
             elapsed: 0.,
             floor: GROUND,
             corridor_floor: constants::GROUND_HEIGHT_FOR_WAVE_AND_SHIP,
@@ -959,7 +959,7 @@ impl Simulation {
             .unwrap_or("auto")
             .to_owned();
         let elapsed = ((position.x - constants::CUBE_SIZE / 2.) / SPEED).max(0.);
-        self.state = Self::initial(self.level.objects.len());
+        self.state = Self::initial(&self.level);
         let mut cursor = 0.;
         let mut mode = PlayerMode::Cube;
         let mut gravity = -1.;

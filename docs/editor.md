@@ -1,56 +1,65 @@
-# Level editor HUD
+# Level editor
 
-The editor uses a bottom object palette and compact icon controls around the
-canvas. Buttons contain artwork or vector geometry; descriptions and shortcuts
-appear in a separate hover hint. Object data remains compatible with existing JSON.
+The editor was compared with the installed original on 2026-11-13. Its Build,
+Edit and Delete toolbars, 90-point bottom panel, side controls, pause menu and
+Exit popup use extracted native sprites and bitmap fonts in a 320-point viewport.
+The native categories retain the object types supported by this port. Unavailable
+categories, decoration filters, warp and Platformer remain disabled.
 
-- Bottom left: build (block icon), select/move (cursor), delete (trash).
-- Bottom tabs: blocks/platforms, hazards, gameplay objects/portals, color/end triggers.
-- Bottom thumbnails: choose an object or one of the 11 block textures, then click the canvas.
-- Left: playtest, undo, redo, zoom in/out and reset view.
-- Right: duplicate, delete selected, exact rotation, rotate 90 degrees, trigger settings,
-  grid visibility, grid snapping and movement arrows.
-- Top right: save, settings and exit. Settings contains new/open/save-as, name,
-  music and background controls.
+- Build: choose blocks, hazards, pads/orbs, mode portals, color/end triggers or Start Pos.
+- Edit: select or drag objects; Swipe selects a rectangle. Copy/paste and duplicate
+  preserve relative positions and unknown JSON fields. Transform tools support
+  flips, rotation and separate X/Y scale. Rotate also rotates group positions.
+- The nine step controls choose 5 blocks, 1 block, a custom step, fractions of a
+  block, or native-unit increments. The four large arrows move the selection.
+- Delete: remove individual objects, all matching objects in the current layer,
+  or its Start Pos markers. None/Static/custom-type filters restrict deletion.
+  Undo restores a bulk deletion in one operation.
+- Right-side controls provide copy/paste, trigger/Start Pos settings, group IDs,
+  property/color paste, deselection and editor-layer controls. Group IDs are
+  preserved as metadata; advanced group-based triggers are not implemented.
+- Gear: native level-settings layout, background/ground color and song selection.
+  Wrench/Options: name, new/open/save-as, music and background file controls.
+- Camera: WASD or middle/right drag pans; wheel or +/- buttons zoom; 0 resets zoom.
+  The top scrollbar moves along the level. View hides editor controls and blocks edits.
 
-Select mode supports dragging and arrow-key movement. Shift+arrow moves one unit.
-R/T rotate by 2.5 degrees; the angle icon accepts an exact value. Grid visibility
-and snapping are independent. Ctrl+Z undoes; Ctrl+Shift+Z or Ctrl+Y redoes. Editing
-after undo starts a new history branch. Both histories are bounded to 50 operations.
+Ctrl+C/Ctrl+V copy and paste; Ctrl+D duplicates. Arrows move by the selected step;
+Shift+arrow moves one Rust unit. R/T rotate by 2.5 degrees. Ctrl+Z undoes;
+Ctrl+Shift+Z or Ctrl+Y redoes. Grid visibility and snapping are independent.
+History retains 50 operations. Unknown object properties survive editing.
 
-Ctrl+S saves, Ctrl+Shift+S saves as, Ctrl+O opens and F5 playtests. The pause-menu
-editor button returns to the same unsaved document after playtesting. File dialogs
-accept typed paths. Unsaved-discard warnings stay visible while hovering controls.
+## Pause, saving and exit
 
-Color and end triggers appear as circular markers in rows above the level. Their
-colors and BG/G/C/END labels identify their purpose. Selecting one shows a circular
-outline and a vertical activation guide; dragging or moving it changes only its X
-coordinate. Legacy JSON Y coordinates and gameplay activation remain unchanged.
-Escape closes input dialogs. Otherwise, Escape or the editor Exit button opens
-"Выйти из редактора?" with Cancel/Exit buttons, even for an unchanged level.
-Unsaved documents show a discard warning. Cancel or another Escape keeps the
-document; Exit returns to the main menu. Escape from a paused playtest returns to
-the same unsaved document and camera position. Application exit confirmation
-appears only in the main menu.
+Escape opens the native editor pause menu: Resume, Save and Play, Save and Exit,
+Save, Exit. Its side panel includes settings, export, auto-save, audio and help.
+Music, SFX and Editor SFX volumes are independent. Time changes playtest speed
+from 0.25x to 1.75x and adjusts music playback; normal gameplay remains at 240 Hz.
+Auto-save writes dirty documents every 30 seconds when enabled.
 
-Canvas input shares the HUD's dimensions so clicks on object thumbnails, file
-settings or tool buttons cannot place/delete/drag world objects. Tests check these
-regions at 960×640, 1280×720 and 1920×1080, all palette categories, absence of text
-inside button hierarchies, undo/redo branching and selection-mode transitions.
+Exit opens the original silver-framed **Exit** popup: ?Exit without saving? All
+unsaved changes will be lost!? with yellow/red emphasis and green **No / Yes**
+buttons. No or Escape returns to pause with the document intact. Yes discards
+and returns to this port's main menu. Save and Exit/Play proceed only after a
+successful write. A failed write keeps the document and displays the error.
 
-Layout reference: [Geometry Dash editor guide](https://www.robtopgames.com/files/GDEditor.pdf).
+Ctrl+S saves, Ctrl+Shift+S exports to another path, Ctrl+O opens and F5 tests.
+Unsaved levels receive a path under the user level directory. Bundled templates
+are saved as user copies. New/Open retain discard protection. Path dialogs accept
+typed paths, Ctrl+A, Enter and Escape; custom audio accepts Ogg and backgrounds PNG.
 
-## Start positions
+## Start positions and markers
 
-Open a level with E from selection or pause. In the editor's Triggers category,
-choose START POS and place it where the player should begin. Select the marker
-to change its mode and gravity with the two property buttons, or M and V.
-The default Auto settings inherit earlier mode/gravity portals. F5 starts at the
-selected start marker, or the last marker when another object is selected.
-Deleting all start markers restores the ordinary playtest start.
+Place Start Pos from the final supported category. Select it and use Edit Special,
+M (mode) or V (gravity). Auto inherits preceding portals. F5 starts at the selected
+marker, or the last one. E, the editor button or leaving a paused playtest restores
+the same unsaved document. Playtests do not award progress. Restart restores the
+same position, preceding color timeline, corridor, camera and music offset.
 
-Start positions are saved in level JSON and participate in undo, redo, movement,
-duplication and deletion. They are editor helpers: ordinary level play ignores
-them, they do not extend level length, and playtests do not award saved progress.
-Restart returns to the same start position. Preceding color-trigger timelines,
-the portal corridor, camera and music offset are restored at that position.
+Color/end triggers retain circular editor markers and their activation guides.
+Moving these markers changes X only. Existing JSON Y and gameplay activation
+remain intact. Scale metadata changes both rendered size and collision geometry;
+flips also reflect local collision offsets.
+
+The full original object catalog, Platformer, advanced trigger dialogs, text/font
+objects, decoration and numeric object-ID filters, online sharing and editor death
+statistics are not implemented. Their visible controls remain inactive.

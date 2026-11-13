@@ -6,6 +6,12 @@ use crate::{
     simulation::{CEILING, PlayerMode, Status},
 };
 use bevy::{camera::ScalingMode, prelude::*, sprite::Text2dShadow};
+use std::{collections::HashMap, sync::LazyLock};
+
+static NATIVE_SIZES: LazyLock<HashMap<String, [f32; 2]>> = LazyLock::new(|| {
+    serde_json::from_str(include_str!("../../assets/native_ui/game-sprites.json"))
+        .expect("native game sprite sizes")
+});
 
 mod depth {
     pub const BACKGROUND: f32 = -200.;
@@ -87,7 +93,15 @@ impl Plugin for PresentationPlugin {
     }
 }
 #[derive(Resource)]
-struct PlayerImages([Handle<Image>; 9]);
+struct PlayerImages([Handle<Image>; 10]);
+#[derive(Resource, Default)]
+struct ModeAnimations {
+    robot_run: Vec<Handle<Image>>,
+    robot_jump: Vec<Handle<Image>>,
+    robot_fall: Vec<Handle<Image>>,
+    spider_run: Vec<Handle<Image>>,
+    spider_fall: Vec<Handle<Image>>,
+}
 
 fn setup(
     mut commands: Commands,
@@ -127,7 +141,20 @@ fn setup(
         server.load("cube/Cube001_small.png"),
         server.load("cube/Cube002_small.png"),
         server.load("checkpoint.png"),
+        server.load("robot/Robot001.png"),
     ]));
+    let frames = |directory: &str, state: &str, count| {
+        (1..=count)
+            .map(|i| server.load(format!("{directory}/{state}_{i:03}.png")))
+            .collect()
+    };
+    commands.insert_resource(ModeAnimations {
+        robot_run: frames("robot", "Robot_run", 16),
+        robot_jump: frames("robot", "Robot_jump_loop", 5),
+        robot_fall: frames("robot", "Robot_fall_loop", 5),
+        spider_run: frames("spider", "Spider_run", 7),
+        spider_fall: frames("spider", "Spider_fall_loop", 5),
+    });
     commands.spawn((
         Camera2d,
         MainCamera,
@@ -159,18 +186,12 @@ pub fn texture(object: &LevelObject) -> Option<String> {
         "cube_portal" => "portals/CubePortalback.png".into(),
         "ship_portal" => "portals/ShipPortalback.png".into(),
         "wave_portal" => "portals/WavePortalback.png".into(),
-        "ball_portal" => "portals/BallPortal.png".into(),
-        "spider_portal" => "portals/SpiderPortal.png".into(),
+        "ball_portal" => "portals/BallPortalback.png".into(),
+        "spider_portal" => "portals/SpiderPortalback.png".into(),
+        "robot_portal" => "portals/RobotPortalback.png".into(),
         "start_pos" => "native_ui/edit_eStartPosBtn_001.png".into(),
         _ => return None,
     })
-}
-fn mode_color(mode: PlayerMode) -> Color {
-    if mode == PlayerMode::Robot {
-        Color::srgb(0.3, 1., 0.6)
-    } else {
-        Color::WHITE
-    }
 }
 fn rebuild(
     mut commands: Commands,
@@ -304,12 +325,17 @@ fn rebuild(
     let background = level
         .map(|l| l.background.as_str())
         .unwrap_or("assets/background/stereomadness_bw.png");
+    let native_editor_bg = editing && background == "assets/background/stereomadness_bw.png";
     for index in -4..=4 {
         commands.spawn((
             LevelVisual,
             Background(index),
             Sprite {
-                image: server.load(crate::level::asset_path(background)),
+                image: server.load(if native_editor_bg {
+                    "native_ui/background.png".to_owned()
+                } else {
+                    crate::level::asset_path(background)
+                }),
                 custom_size: Some(Vec2::new(
                     MENU_TILE_WIDTH,
                     constants::VIEWPORT_HEIGHT as f32,
@@ -366,6 +392,14 @@ fn rebuild(
         return;
     };
     for object in &level.objects {
+        if editing
+            && game
+                .editor
+                .as_ref()
+                .is_some_and(|e| !e.object_visible(object))
+        {
+            continue;
+        }
         if !editing && matches!(object.kind.as_str(), "trigger" | "end_level" | "start_pos") {
             continue;
         }
@@ -375,8 +409,9 @@ fn rebuild(
         }
         let center = object.rect().center;
         let size = object.size();
-        let mut sprite = if let Some(path) = texture(object) {
-            Sprite::from_image(server.load(path))
+        let path = texture(object);
+        let mut sprite = if let Some(path) = &path {
+            Sprite::from_image(server.load(path.to_owned()))
         } else {
             Sprite::from_color(
                 if object.supported() {
@@ -387,8 +422,27 @@ fn rebuild(
                 Vec2::ONE,
             )
         };
+        sprite.flip_x = object
+            .extra
+            .get("flip_x")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        sprite.flip_y = object
+            .extra
+            .get("flip_y")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let artwork_size = path
+            .as_ref()
+            .and_then(|p| NATIVE_SIZES.get(p))
+            .map(|&[w, h]| {
+                Vec2::new(w * object.scale().x as f32, h * object.scale().y as f32)
+                    * constants::GD_SCALE as f32
+            });
         sprite.custom_size = Some(if object.kind == "start_pos" {
             Vec2::new(80., 50.)
+        } else if object.kind.ends_with("portal") {
+            artwork_size.unwrap_or(Vec2::new(size.x as f32, size.y as f32))
         } else {
             Vec2::new(size.x as f32, size.y as f32)
         });
@@ -402,9 +456,7 @@ fn rebuild(
                 translation: Vec3::new(
                     center.x as f32,
                     center.y as f32,
-                    if matches!(object.kind.as_str(), "ball_portal" | "spider_portal") {
-                        depth::PORTAL_FRONT
-                    } else if object.kind.ends_with("portal") {
+                    if object.kind.ends_with("portal") {
                         0.
                     } else {
                         depth::OBJECT
@@ -414,12 +466,22 @@ fn rebuild(
                 ..default()
             },
         ));
-        if let Some(path) = texture(object).filter(|p| p.ends_with("Portalback.png")) {
+        if let Some(path) = path.filter(|p| p.ends_with("Portalback.png")) {
             commands.spawn((
                 LevelVisual,
                 Sprite {
                     image: server.load(path.replace("back", "front")),
-                    custom_size: Some(Vec2::new(size.x as f32, size.y as f32)),
+                    custom_size: artwork_size,
+                    flip_x: object
+                        .extra
+                        .get("flip_x")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
+                    flip_y: object
+                        .extra
+                        .get("flip_y")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
                     ..default()
                 },
                 Transform {
@@ -460,6 +522,7 @@ fn finish_loading(
     sprites: Query<&Sprite>,
     audio: Query<&AudioPlayer>,
     images: Res<PlayerImages>,
+    animations: Res<ModeAnimations>,
 ) {
     if game.screen != Screen::Loading {
         return;
@@ -476,6 +539,16 @@ fn finish_loading(
         .filter(|s| s.image != Handle::default())
         .map(|s| s.image.id().untyped())
         .chain(images.0.iter().map(|h| h.id().untyped()))
+        .chain(
+            animations
+                .robot_run
+                .iter()
+                .chain(&animations.robot_jump)
+                .chain(&animations.robot_fall)
+                .chain(&animations.spider_run)
+                .chain(&animations.spider_fall)
+                .map(|h| h.id().untyped()),
+        )
         .chain(audio.iter().map(|p| p.0.id().untyped()))
         .chain(music_handle.iter().map(|h| h.id().untyped()));
     let mut pending = false;
@@ -501,6 +574,7 @@ fn animate(
     time: Res<Time<Fixed>>,
     windows: Query<&Window>,
     images: Res<PlayerImages>,
+    animations: Option<Res<ModeAnimations>>,
     textures: Res<Assets<Image>>,
     mut camera: Query<(&mut Transform, &mut Projection), With<MainCamera>>,
     mut players: Query<
@@ -545,6 +619,11 @@ fn animate(
         if let Some(e) = &game.editor {
             zoom = e.zoom as f32;
             camera_pos = Vec2::new(e.camera.x as f32, e.camera.y as f32);
+            bg_color = rgba(
+                e.level
+                    .initial_color(false, [40. / 255., 125. / 255., 1., 1.]),
+            );
+            ground_color = rgba(e.level.initial_color(true, [0., 0.4, 1., 1.]));
         }
     } else if matches!(
         game.screen,
@@ -582,7 +661,7 @@ fn animate(
             PlayerMode::Ship | PlayerMode::Wave | PlayerMode::Ball | PlayerMode::Spider
         ) || p.gravity > 0.;
         for (mut transform, mut sprite, mut visibility) in &mut players {
-            let angle = p.rotation - if p.mode == PlayerMode::Wave { 90. } else { 0. };
+            let angle = p.rotation;
             transform.rotation = Quat::from_rotation_z(angle.to_radians() as f32);
             let offset = if p.mode == PlayerMode::Ship {
                 transform.rotation * Vec3::new(0., -11., 0.)
@@ -590,24 +669,42 @@ fn animate(
                 Vec3::ZERO
             };
             transform.translation = Vec3::new(pos.x as f32, pos.y as f32, depth::PLAYER) + offset;
-            sprite.custom_size = Some(if p.mode == PlayerMode::Ship {
-                Vec2::new(98., 58.)
-            } else if p.mode == PlayerMode::Wave {
-                // This asset points up. Preserve its aspect ratio independently
-                // of the native 10x10 collision box.
-                Vec2::new(82., 102.) * (80. / 102.)
-            } else {
-                Vec2::new(p.mode.size().x as f32, p.mode.size().y as f32)
-            });
             sprite.image = match p.mode {
                 PlayerMode::Cube => images.0[game.profile.cube_icon.min(1)].clone(),
                 PlayerMode::Ship => images.0[2].clone(),
                 PlayerMode::Wave => images.0[3].clone(),
                 PlayerMode::Ball => images.0[4].clone(),
                 PlayerMode::Spider => images.0[5].clone(),
-                _ => Handle::default(),
+                PlayerMode::Robot => images.0[9].clone(),
             };
-            sprite.color = mode_color(p.mode);
+            if let Some(animations) = &animations {
+                let frames = match (p.mode, p.grounded) {
+                    (PlayerMode::Robot, true) => &animations.robot_run,
+                    (PlayerMode::Robot, false) if p.velocity.y * p.gravity < 0. => {
+                        &animations.robot_jump
+                    }
+                    (PlayerMode::Robot, false) => &animations.robot_fall,
+                    (PlayerMode::Spider, true) => &animations.spider_run,
+                    (PlayerMode::Spider, false) => &animations.spider_fall,
+                    _ => &animations.robot_run[..0],
+                };
+                if !frames.is_empty() {
+                    sprite.image =
+                        frames[(sim.state.elapsed * 30.) as usize % frames.len()].clone();
+                }
+            }
+            // UHD artwork uses four pixels per native unit. Its transparent
+            // margins and pivot belong to the sprite, not the collision box.
+            sprite.custom_size = Some(
+                textures
+                    .get(&sprite.image)
+                    .map(|image| {
+                        Vec2::new(image.width() as f32, image.height() as f32)
+                            * (constants::GD_SCALE as f32 / 4.)
+                    })
+                    .unwrap_or(Vec2::new(p.mode.size().x as f32, p.mode.size().y as f32)),
+            );
+            sprite.color = Color::WHITE;
             sprite.flip_y = p.gravity > 0.
                 && matches!(
                     p.mode,
@@ -628,7 +725,15 @@ fn animate(
     clear.0 = bg_color;
     for (mut transform, mut sprite, bg, ground, ceiling) in &mut scenery {
         if let Some(bg) = bg {
-            let height = constants::VIEWPORT_HEIGHT as f32 * (1. / zoom).max(1.);
+            let native_editor_bg = editing
+                && game.editor.as_ref().is_some_and(|e| {
+                    e.level.background == "assets/background/stereomadness_bw.png"
+                });
+            let height = if native_editor_bg {
+                MENU_TILE_WIDTH * (1. / zoom).max(1.)
+            } else {
+                constants::VIEWPORT_HEIGHT as f32 * (1. / zoom).max(1.)
+            };
             let width = textures
                 .get(&sprite.image)
                 .map(|i| height * i.width() as f32 / i.height() as f32)
@@ -636,7 +741,11 @@ fn animate(
             sprite.custom_size = Some(Vec2::new(width, height));
             transform.translation.x = camera_pos.x + bg.0 as f32 * width
                 - scroll_phase(level_elapsed, crate::constants::BACKGROUND_SPEED, width);
-            transform.translation.y = camera_pos.y;
+            transform.translation.y = if native_editor_bg {
+                camera_pos.y - constants::VIEWPORT_HEIGHT as f32 / (2. * zoom) + height / 2.
+            } else {
+                camera_pos.y
+            };
             sprite.color = bg_color;
         }
         if let Some(layer) = ground {
@@ -822,7 +931,7 @@ fn draw_helpers(game: Res<Game>, mut gizmos: Gizmos, windows: Query<&Window>) {
             let spacing = crate::level::GRID * if editor.zoom < 0.3 { 5. } else { 1. };
             let left = ((editor.camera.x - half_w) / spacing).floor() * spacing;
             let bottom = ((editor.camera.y - half_h) / spacing).floor() * spacing;
-            let color = Color::srgba(0.7, 0.8, 1., 0.14);
+            let color = Color::srgba(0., 0., 0., 0.45);
             for i in 0..=((half_w * 2. / spacing).ceil() as usize + 1) {
                 let x = (left + i as f64 * spacing) as f32;
                 gizmos.line_2d(
@@ -840,14 +949,18 @@ fn draw_helpers(game: Res<Game>, mut gizmos: Gizmos, windows: Query<&Window>) {
                 );
             }
         }
-        if let Some(o) = editor.selected.and_then(|i| editor.level.objects.get(i)) {
+        for o in editor
+            .selection()
+            .into_iter()
+            .filter_map(|i| editor.level.objects.get(i))
+        {
             let r = o.editor_rect();
             if o.editor_marker() {
-                gizmos.circle_2d(point(r.center), 47., Color::srgb(1., 0.9, 0.2));
+                gizmos.circle_2d(point(r.center), 47., Color::srgb(0.2, 1., 0.2));
                 gizmos.line_2d(
                     point(r.center - Point::new(0., 47.)),
                     Vec2::new(r.center.x as f32, GROUND as f32),
-                    Color::srgba(1., 0.9, 0.2, 0.4),
+                    Color::srgba(0.2, 1., 0.2, 0.4),
                 );
             } else {
                 let [a, b] = r.axes();
@@ -861,7 +974,7 @@ fn draw_helpers(game: Res<Game>, mut gizmos: Gizmos, windows: Query<&Window>) {
                     gizmos.line_2d(
                         point(pts[i]),
                         point(pts[(i + 1) % 4]),
-                        Color::srgb(1., 0.9, 0.2),
+                        Color::srgb(0.2, 1., 0.2),
                     );
                 }
             }
@@ -1044,10 +1157,19 @@ mod tests {
     fn mode_sprites_ship_rider_and_checkpoint_use_their_cached_art() {
         let mut app = App::new();
         app.init_resource::<Assets<Image>>();
-        let images: [Handle<Image>; 9] = std::array::from_fn(|_| {
-            app.world_mut()
-                .resource_mut::<Assets<Image>>()
-                .add(Image::default())
+        let images: [Handle<Image>; 10] = std::array::from_fn(|i| {
+            let (width, height) = match i {
+                2 => (149, 90),
+                3 => (102, 82),
+                _ => (120, 120),
+            };
+            let mut image = Image::default();
+            image.resize(bevy::render::render_resource::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            });
+            app.world_mut().resource_mut::<Assets<Image>>().add(image)
         });
         let mut game = Game::new(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")));
         game.screen = Screen::Playing;
@@ -1119,11 +1241,11 @@ mod tests {
             if mode == PlayerMode::Wave {
                 let sprite = app.world().get::<Sprite>(player).unwrap();
                 let size = sprite.custom_size.unwrap();
-                assert!((size.x / size.y - 82. / 102.).abs() < 1e-6);
-                let direction = app.world().get::<Transform>(player).unwrap().rotation * Vec3::Y;
+                assert!((size.x / size.y - 102. / 82.).abs() < 1e-6);
+                let direction = app.world().get::<Transform>(player).unwrap().rotation * Vec3::X;
                 assert!(
                     direction.x > 0.99,
-                    "the upward source sprite must point right at zero heading"
+                    "the native source sprite must point right at zero heading"
                 );
             }
         }
@@ -1139,7 +1261,7 @@ mod tests {
         assert_eq!(app.world().get::<Sprite>(rider).unwrap().image, images[7]);
         assert_eq!(
             app.world().get::<Sprite>(player).unwrap().custom_size,
-            Some(Vec2::new(98., 58.))
+            Some(Vec2::new(149., 90.) * (constants::GD_SCALE as f32 / 4.))
         );
         let mut checkpoints = app
             .world_mut()

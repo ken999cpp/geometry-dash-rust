@@ -47,6 +47,11 @@ fn sync_audio(
     mut music: Query<(Entity, Option<&mut AudioSink>, &mut PlaybackSettings), With<Music>>,
 ) {
     let paused = music_paused(&game);
+    let speed = if game.testing {
+        game.editor.as_ref().map_or(1., |e| e.test_speed as f32)
+    } else {
+        1.
+    };
     let channel = if matches!(
         game.screen,
         Screen::Loading | Screen::Playing | Screen::Paused | Screen::Complete
@@ -55,7 +60,13 @@ fn sync_audio(
     } else {
         MusicChannel::Menu
     };
-    let volume = Volume::Linear(game.profile.settings.volume(channel) as f32 / 100.);
+    let volume = Volume::Linear(
+        if channel == MusicChannel::Menu && !game.profile.settings.menu_music_enabled {
+            0.
+        } else {
+            game.profile.settings.volume(channel) as f32 / 100.
+        },
+    );
     let reference = if matches!(
         game.screen,
         Screen::Loading | Screen::Playing | Screen::Paused | Screen::Complete
@@ -86,6 +97,7 @@ fn sync_audio(
             };
             settings.paused = paused;
             settings.volume = volume;
+            settings.speed = speed;
             // Vorbis's lightweight decoder cannot seek an existing sink. Recreate
             // playback at the offset; Bevy skips samples before starting the sink.
             settings.start_position = Some(Duration::from_secs_f64(offset.max(0.)));
@@ -101,7 +113,11 @@ fn sync_audio(
             // Also cover music whose asynchronous decoder has not started yet.
             settings.paused = paused;
             settings.volume = volume;
+            settings.speed = speed;
             if let Some(mut sink) = sink {
+                if (sink.speed() - speed).abs() > f32::EPSILON {
+                    sink.set_speed(speed);
+                }
                 if sink.volume() != volume {
                     sink.set_volume(volume);
                 }
@@ -118,8 +134,14 @@ fn sync_audio(
             AudioPlayer::new(server.load(format!("sfx/{sfx}.ogg"))),
             PlaybackSettings {
                 volume: Volume::Linear(
-                    game.profile.settings.volume(MusicChannel::Sfx) as f32 / 100.,
+                    game.profile.settings.volume(MusicChannel::Sfx) as f32 / 100.
+                        * if game.testing || game.screen == Screen::Editor {
+                            game.profile.settings.volume(MusicChannel::EditorSfx) as f32 / 100.
+                        } else {
+                            1.
+                        },
                 ),
+                speed,
                 ..PlaybackSettings::DESPAWN
             },
         ));

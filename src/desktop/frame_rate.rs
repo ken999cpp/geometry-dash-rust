@@ -150,15 +150,27 @@ fn pace_frames(limit: Res<RenderFrameLimit>, mut pacer: ResMut<FramePacer>) {
     if let Some(previous) = pacer.last_gate {
         wait_until(previous + limit.0);
     }
-    // Anchor at the presentation gate. Cleanup and swap-chain work belong in
-    // the next frame budget; adding them after every wait lowered actual FPS.
+    // Provisional timestamp, replaced by the completed presentation below.
     pacer.last_gate = Some(Instant::now());
 }
 
-fn record_present(timing: Res<FrameTiming>) {
+fn record_present(
+    timing: Res<FrameTiming>,
+    mut pacer: ResMut<FramePacer>,
+    limit: Res<RenderFrameLimit>,
+) {
     // Measure from the completed present, including any VSync wait. Slow frames
     // start a fresh interval instead of allowing catch-up frames above the cap.
-    timing.record(Instant::now());
+    let now = Instant::now();
+    timing.record(now);
+    // Ordinary swap-chain overhead remains inside the gate-to-gate budget.
+    // A long present or OS stall starts a fresh interval instead of catching up.
+    if pacer
+        .last_gate
+        .is_some_and(|gate| now.duration_since(gate) > limit.0 / 4)
+    {
+        pacer.last_gate = Some(now);
+    }
 }
 
 #[cfg(test)]
@@ -214,13 +226,23 @@ mod tests {
 
     #[derive(Resource, Default)]
     struct PresentTimes(Vec<Instant>);
+    #[derive(Resource, Default)]
+    struct GateTimes(Vec<Instant>);
 
     #[derive(Resource, Default)]
     struct SimulatedRenderWork(Duration);
+    #[derive(Resource, Default)]
+    struct SimulatedPresentWork(Duration);
 
     fn simulate_render_and_present(world: &mut World) {
         std::thread::sleep(world.resource::<SimulatedRenderWork>().0);
         world.run_schedule(RenderGraph);
+        let gate = world.resource::<FramePacer>().last_gate.unwrap();
+        world.resource_mut::<GateTimes>().0.push(gate);
+        let delay = world.resource::<SimulatedPresentWork>().0;
+        if !delay.is_zero() {
+            std::thread::sleep(delay);
+        }
         world.resource_mut::<PresentTimes>().0.push(Instant::now());
     }
 
@@ -239,7 +261,9 @@ mod tests {
         render_app
             .add_schedule(RenderGraph::base_schedule())
             .init_resource::<PresentTimes>()
+            .init_resource::<GateTimes>()
             .init_resource::<SimulatedRenderWork>()
+            .init_resource::<SimulatedPresentWork>()
             .add_systems(
                 Render,
                 simulate_render_and_present.in_set(RenderSystems::Render),
@@ -259,6 +283,10 @@ mod tests {
             for frame in 0..8 {
                 app.sub_app_mut(RenderApp)
                     .world_mut()
+                    .resource_mut::<SimulatedPresentWork>()
+                    .0 = Duration::from_millis(if frame == 4 { 12 } else { 0 });
+                app.sub_app_mut(RenderApp)
+                    .world_mut()
                     .resource_mut::<SimulatedRenderWork>()
                     .0 = Duration::from_millis(if frame == 2 { 30 } else { 0 });
                 app.update();
@@ -268,7 +296,16 @@ mod tests {
                     expected_period
                 );
                 let times = &render_world.resource::<PresentTimes>().0;
-                if times.len() >= 2 {
+                let gates = &render_world.resource::<GateTimes>().0;
+                if gates.len() >= 2 {
+                    assert!(
+                        gates[gates.len() - 1].duration_since(gates[gates.len() - 2])
+                            >= expected_period
+                    );
+                }
+                // Present-call overhead can vary between gates. The explicit
+                // slow-present case must still start a full fresh interval.
+                if times.len() >= 2 && frame == 5 {
                     let interval = times[times.len() - 1].duration_since(times[times.len() - 2]);
                     assert!(
                         interval + Duration::from_micros(100) >= expected_period,

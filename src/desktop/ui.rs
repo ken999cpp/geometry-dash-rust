@@ -48,12 +48,39 @@ pub(super) enum Action {
     EditorMode(EditorMode),
     EditorCategory(usize),
     EditorSettings,
+    EditorFiles,
+    LevelColor(bool),
+    EditorPause,
+    EditorView,
+    EditorSwipe,
+    EditorRotateObjects,
+    EditorCopy,
+    EditorPaste,
+    EditorCopyState,
+    EditorPasteState(bool),
+    EditorFlip(bool),
+    EditorDeselect,
+    EditorPalettePage(i32),
+    EditorSavePlay,
+    EditorSaveExit,
+    EditorSelectionSettings,
+    EditorSong(i32),
+    EditorHelp,
+    EditorMoveStep(f64),
+    EditorNudge(f64, f64),
+    EditorCustomStep,
+    EditorDeleteAll(bool),
+    EditorDeleteFilter(u8),
+    ObjectScale,
+    ObjectGroups,
+    ObjectLayer,
+    EditorLayer(i32),
+    EditorAllLayers,
+    EditorGoToLayer,
     BlockTexture(usize),
     Rotate(f64),
-    Move(f64, f64),
     ZoomIn,
     ZoomOut,
-    ResetView,
     Snap,
     ExitEditor,
     CancelExit,
@@ -62,10 +89,16 @@ pub(super) enum Action {
     Pause,
     Settings,
     CloseSettings,
+    SettingsPage(super::settings::Page),
+    SettingsBack,
+    Setting(super::settings::Toggle),
+    VideoFullscreen,
+    VideoBorderless,
+    VideoResolution(i32),
+    VideoApply,
     NoDeathEffect,
     HideCheckpointButtons,
     FpsLimit(u32),
-    VolumeStep(crate::storage::MusicChannel, i16),
     AddCheckpoint,
     RemoveCheckpoint,
     StartMode,
@@ -98,7 +131,10 @@ impl Plugin for InterfacePlugin {
                 (
                     buttons,
                     super::settings::sliders,
+                    super::editor_ui::controls,
+                    super::settings::sync_window,
                     rebuild,
+                    super::settings::scale_slices,
                     hud,
                     super::native_menu::refresh_text,
                     super::editor_ui::tooltip,
@@ -161,18 +197,18 @@ fn rebuild(
             super::native_menu::summary(&mut commands, &game, &native_art, title);
         }
         if game.exit_dialog.is_some() {
-            build_exit_dialog(&mut commands, &game, &dialog_font.0);
+            build_exit_dialog(&mut commands, &game, &dialog_font.0, &native_art);
         }
         if game.settings_open {
-            super::settings::build(&mut commands, &game, &dialog_font.0);
+            super::settings::build(&mut commands, &game, &native_art);
         }
         return;
     }
     if game.exit_dialog.is_some() {
-        build_exit_dialog(&mut commands, &game, &dialog_font.0);
+        build_exit_dialog(&mut commands, &game, &dialog_font.0, &native_art);
     }
     if game.settings_open {
-        super::settings::build(&mut commands, &game, &dialog_font.0);
+        super::settings::build(&mut commands, &game, &native_art);
     }
     if let Some(prompt) = &game.prompt {
         let root = panel(
@@ -188,15 +224,22 @@ fn rebuild(
                 ..default()
             },
         );
-        label(&mut commands, root, prompt.label, 24.);
-        label(&mut commands, root, format!("{}▏", prompt.value), 19.);
-        label(
+        dialog_label(&mut commands, root, prompt.label, 24., &dialog_font.0);
+        dialog_label(
+            &mut commands,
+            root,
+            &format!("{}▏", prompt.value),
+            19.,
+            &dialog_font.0,
+        );
+        dialog_label(
             &mut commands,
             root,
             "Enter: apply   Ctrl+A: select all",
             15.,
+            &dialog_font.0,
         );
-        label(&mut commands, root, &game.status, 15.);
+        dialog_label(&mut commands, root, &game.status, 15., &dialog_font.0);
         let cancel = commands
             .spawn((
                 Button,
@@ -215,12 +258,22 @@ fn rebuild(
                 BackgroundColor(Color::srgb(0.25, 0.1, 0.1)),
             ))
             .id();
-        super::editor_icons::draw(&mut commands, cancel, super::editor_icons::Icon::Exit);
+        super::native_menu::image(
+            &mut commands,
+            cancel,
+            &native_art,
+            "GJ_closeBtn_001.png",
+            Node {
+                width: percent(100),
+                height: percent(100),
+                ..default()
+            },
+        );
         commands.entity(root).add_child(cancel);
         return;
     }
     if game.screen == Screen::Editor {
-        super::editor_ui::build(&mut commands, &game, &editor_art);
+        super::editor_ui::build(&mut commands, &game, &editor_art, &native_art);
         return;
     }
     super::menu::build(&mut commands, &game, &art);
@@ -239,7 +292,7 @@ fn buttons(
             Option<&mut UiTransform>,
             Option<&super::menu::MirroredButton>,
         ),
-        With<Button>,
+        (With<Button>, Without<bevy::ui::InteractionDisabled>),
     >,
 ) {
     let mut selected = None;
@@ -301,17 +354,117 @@ fn buttons(
         && !matches!(
             action,
             Action::CloseSettings
+                | Action::SettingsPage(..)
+                | Action::SettingsBack
+                | Action::Setting(..)
+                | Action::VideoFullscreen
+                | Action::VideoBorderless
+                | Action::VideoResolution(..)
+                | Action::VideoApply
                 | Action::NoDeathEffect
                 | Action::HideCheckpointButtons
                 | Action::FpsLimit(..)
-                | Action::VolumeStep(..)
         )
     {
         return;
     }
+    if game.prompt.is_some() && !matches!(action, Action::CancelPrompt) {
+        return;
+    }
+    if !game.settings_open
+        && let Some(editor) = &game.editor
+    {
+        let allowed = if editor.start_settings_open {
+            matches!(
+                action,
+                Action::StartMode | Action::StartGravity | Action::EditorSelectionSettings
+            )
+        } else if editor.files_open {
+            matches!(
+                action,
+                Action::EditorFiles
+                    | Action::New
+                    | Action::Open
+                    | Action::SaveAs
+                    | Action::Name
+                    | Action::Background
+                    | Action::Music
+            )
+        } else if editor.settings_open {
+            matches!(
+                action,
+                Action::EditorSettings
+                    | Action::New
+                    | Action::Open
+                    | Action::SaveAs
+                    | Action::Name
+                    | Action::Background
+                    | Action::Music
+                    | Action::EditorSong(..)
+                    | Action::EditorFiles
+                    | Action::LevelColor(..)
+            )
+        } else if editor.pause_open {
+            matches!(
+                action,
+                Action::EditorPause
+                    | Action::EditorSavePlay
+                    | Action::EditorSaveExit
+                    | Action::Save
+                    | Action::ExitEditor
+                    | Action::Settings
+                    | Action::SaveAs
+                    | Action::Music
+                    | Action::EditorHelp
+                    | Action::Setting(..)
+                    | Action::CancelExit
+                    | Action::ConfirmExit
+            )
+        } else {
+            true
+        };
+        if !allowed {
+            return;
+        }
+    }
     match action {
         Action::Settings => game.open_settings(),
         Action::CloseSettings => game.close_settings(),
+        Action::SettingsBack => game.settings_back(),
+        Action::SettingsPage(page) => {
+            if page == super::settings::Page::Graphics {
+                game.settings_video = super::settings::VideoOptions::from(&game.profile.settings);
+            }
+            game.settings_page = page;
+            game.ui_dirty = true;
+        }
+        Action::Setting(setting) => {
+            setting.flip(&mut game.profile.settings);
+            game.persist();
+            game.ui_dirty = true;
+        }
+        Action::VideoFullscreen => {
+            game.settings_video.fullscreen = !game.settings_video.fullscreen;
+            game.ui_dirty = true;
+        }
+        Action::VideoBorderless => {
+            game.settings_video.borderless = !game.settings_video.borderless;
+            game.ui_dirty = true;
+        }
+        Action::VideoResolution(delta) => {
+            game.settings_video.resolution = (game.settings_video.resolution as i32 + delta)
+                .rem_euclid(super::settings::RESOLUTIONS.len() as i32)
+                as usize;
+            game.ui_dirty = true;
+        }
+        Action::VideoApply => {
+            let video = game.settings_video;
+            game.profile.settings.fullscreen = video.fullscreen;
+            game.profile.settings.borderless = video.borderless;
+            game.profile.settings.resolution = video.resolution;
+            game.persist();
+            game.settings_back();
+        }
         Action::FpsLimit(fps) => {
             if game.settings_open && game.display_rate.supports(fps) {
                 game.profile.settings.fps_limit = fps;
@@ -328,12 +481,6 @@ fn buttons(
             *value = !*value;
             game.persist();
             game.ui_dirty = true;
-        }
-        Action::VolumeStep(channel, step) => {
-            let value =
-                (i16::from(game.profile.settings.volume(channel)) + step).clamp(0, 100) as u8;
-            game.profile.settings.set_volume(channel, value);
-            game.persist();
         }
         Action::AddCheckpoint | Action::RemoveCheckpoint => {
             if game.attempt.playing()
@@ -369,7 +516,7 @@ fn buttons(
         Action::Play => game.start(false),
         Action::Edit => {
             if game.testing && game.editor.is_some() {
-                game.screen(Screen::Editor);
+                game.leave_level();
             } else {
                 game.edit();
             }
@@ -410,13 +557,59 @@ fn buttons(
             game.persist();
             game.ui_dirty = true;
         }
-        Action::Save => game.save_editor(false),
-        Action::SaveAs => game.save_editor(true),
+        Action::Save => {
+            game.save_editor(false);
+        }
+        Action::EditorSavePlay => game.save_editor_then(true, false),
+        Action::EditorSaveExit => game.save_editor_then(false, true),
+        Action::EditorPause => {
+            if let Some(editor) = game.editor.as_mut() {
+                editor.pause_open = !editor.pause_open;
+            }
+            game.ui_dirty = true;
+        }
+        Action::EditorSelectionSettings => {
+            if game.editor.as_ref().is_some_and(|e| {
+                e.selected
+                    .is_some_and(|i| e.level.objects[i].kind == "start_pos")
+            }) {
+                let editor = game.editor.as_mut().unwrap();
+                editor.start_settings_open = !editor.start_settings_open;
+                game.ui_dirty = true;
+            } else {
+                game.open_prompt(Field::Trigger);
+            }
+        }
+        Action::EditorHelp => {
+            game.open_settings();
+            game.settings_page = super::settings::Page::Options(super::settings::Tab::Keys);
+        }
+        Action::EditorSong(delta) => {
+            let songs = ["StereoMadness", "BackOnTrack", "Polargeist"];
+            if let Some(editor) = game.editor.as_mut() {
+                let current = songs
+                    .iter()
+                    .position(|s| editor.level.music.contains(s))
+                    .unwrap_or(if delta >= 0 { 2 } else { 0 });
+                let next = (current as i32 + delta).rem_euclid(songs.len() as i32) as usize;
+                editor.remember();
+                editor.level.music = format!("assets/music/{}.mp3", songs[next]);
+            }
+            game.ui_dirty = true;
+        }
+        Action::SaveAs => {
+            game.save_editor(true);
+        }
         Action::Open => game.open_prompt(Field::Open),
         Action::Music => game.open_prompt(Field::Music),
         Action::Background => game.open_prompt(Field::Background),
+        Action::LevelColor(ground) => game.open_prompt(Field::LevelColor(ground)),
         Action::Name => game.open_prompt(Field::Name),
         Action::Rotation => game.open_prompt(Field::Rotation),
+        Action::ObjectScale => game.open_prompt(Field::ObjectScale),
+        Action::ObjectGroups => game.open_prompt(Field::ObjectGroups),
+        Action::ObjectLayer => game.open_prompt(Field::EditorLayer),
+        Action::EditorCustomStep => game.open_prompt(Field::EditorStep),
         Action::Trigger => game.open_prompt(Field::Trigger),
         Action::Test => game.start(true),
         Action::ExitApplication => game.escape(),
@@ -443,10 +636,63 @@ fn buttons(
                 match other {
                     Action::StartMode => editor.cycle_start_setting(false),
                     Action::StartGravity => editor.cycle_start_setting(true),
+                    Action::EditorView => editor.view_only = !editor.view_only,
+                    Action::EditorSwipe => editor.swipe = !editor.swipe,
+                    Action::EditorRotateObjects => editor.rotate_objects = !editor.rotate_objects,
+                    Action::EditorCopy => editor.copy(),
+                    Action::EditorPaste => editor.paste(),
+                    Action::EditorCopyState => editor.copy_state(),
+                    Action::EditorPasteState(color_only) => editor.paste_state(color_only),
+                    Action::EditorFlip(horizontal) => editor.flip(horizontal),
+                    Action::EditorDeselect => editor.deselect(),
+                    Action::EditorMoveStep(step) => editor.move_step = step,
+                    Action::EditorNudge(x, y) => editor.move_selected(
+                        crate::geometry::Point::new(x * editor.move_step, y * editor.move_step),
+                        true,
+                    ),
+                    Action::EditorDeleteAll(start) => editor.delete_all(start),
+                    Action::EditorDeleteFilter(filter) => {
+                        editor.delete_filter = match filter {
+                            1 => Some("solid".into()),
+                            2 => editor
+                                .selected
+                                .map(|i| editor.level.objects[i].kind.clone()),
+                            _ => None,
+                        }
+                    }
+                    Action::EditorLayer(delta) => {
+                        editor.layer = (editor.layer + delta).clamp(0, 999);
+                        editor.show_all_layers = false;
+                        editor.deselect();
+                        changed = true;
+                    }
+                    Action::EditorAllLayers => {
+                        editor.show_all_layers = !editor.show_all_layers;
+                        editor.deselect();
+                        changed = true;
+                    }
+                    Action::EditorGoToLayer => {
+                        if let Some(i) = editor.selected {
+                            editor.layer = editor.level.objects[i]
+                                .extra
+                                .get("editor_layer")
+                                .and_then(|v| v.as_i64())
+                                .unwrap_or(0) as i32;
+                            editor.show_all_layers = false;
+                            changed = true;
+                        }
+                    }
+                    Action::EditorPalettePage(delta) => {
+                        editor.palette_page = (editor.palette_page as i32 + delta).max(0) as usize
+                    }
                     Action::Tool(i) => editor.choose_tool(i),
                     Action::EditorMode(mode) => editor.set_mode(mode),
-                    Action::EditorCategory(category) => editor.category = category,
+                    Action::EditorCategory(category) => {
+                        editor.category = category;
+                        editor.palette_page = 0;
+                    }
                     Action::EditorSettings => editor.settings_open = !editor.settings_open,
+                    Action::EditorFiles => editor.files_open = !editor.files_open,
                     Action::BlockTexture(n) => {
                         editor.texture = n;
                         editor.choose_tool(1);
@@ -460,18 +706,11 @@ fn buttons(
                     Action::Delete => editor.delete(),
                     Action::Duplicate => editor.duplicate(),
                     Action::Rotate(degrees) => editor.rotate(degrees),
-                    Action::Move(x, y) => {
-                        editor.move_selected(crate::geometry::Point::new(x, y), true)
-                    }
                     Action::ZoomIn => editor.zoom = (editor.zoom * 1.2).min(10.),
                     Action::ZoomOut => editor.zoom = (editor.zoom / 1.2).max(0.1),
-                    Action::ResetView => {
-                        editor.zoom = 1.;
-                        editor.camera = crate::geometry::Point::new(1200., 640.);
-                    }
                     _ => {}
                 }
-                changed = editor.revision != before;
+                changed |= editor.revision != before;
             }
             game.ui_dirty = true;
             game.scene_dirty |= changed;
@@ -481,6 +720,7 @@ fn buttons(
         }
     }
 }
+#[allow(clippy::type_complexity)]
 fn hud(
     game: Res<Game>,
     time: Res<Time>,
@@ -490,7 +730,9 @@ fn hud(
         &mut super::native_menu::BitmapText,
         Option<&super::native_menu::HudProgress>,
         Option<&super::native_menu::HudFps>,
+        Option<&super::native_menu::HudTime>,
     )>,
+    mut bars: Query<&mut Node, With<super::native_menu::HudBar>>,
 ) {
     *timer += time.delta_secs();
     if *timer < 0.1 {
@@ -500,11 +742,16 @@ fn hud(
     let Some(sim) = &game.simulation else {
         return;
     };
-    for (mut label, progress, fps) in &mut text {
+    for mut bar in &mut bars {
+        bar.width = percent(sim.progress() as f32);
+    }
+    for (mut label, progress, fps, clock) in &mut text {
         let value = if progress.is_some() {
             Some(format!("{}%", sim.progress()))
         } else if fps.is_some() {
             Some(format!("{:.0} FPS", timing.fps()))
+        } else if clock.is_some() {
+            Some(format!("{:.2}", sim.state.elapsed))
         } else {
             None
         };
@@ -546,84 +793,16 @@ fn update_attempt_overlay(
     }
 }
 
-fn build_exit_dialog(commands: &mut Commands, game: &Game, font: &Handle<Font>) {
-    let root = commands
-        .spawn((
-            UiRoot,
-            GlobalZIndex(2000),
-            Node {
-                position_type: PositionType::Absolute,
-                width: percent(100),
-                height: percent(100),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0., 0., 0., 0.7)),
-        ))
-        .id();
-    let panel = commands
-        .spawn((
-            Node {
-                width: px(560),
-                padding: UiRect::all(px(28)),
-                flex_direction: FlexDirection::Column,
-                row_gap: px(22),
-                align_items: AlignItems::Center,
-                border: UiRect::all(px(3)),
-                border_radius: BorderRadius::all(px(14)),
-                ..default()
-            },
-            BackgroundColor(Color::srgb(0.06, 0.14, 0.25)),
-            BorderColor::all(Color::srgb(0.5, 0.8, 1.)),
-        ))
-        .id();
-    commands.entity(root).add_child(panel);
-    let title = if game.exit_dialog == Some(ExitTarget::Editor) {
-        "Выйти из редактора?"
-    } else {
-        "Вы уверены, что хотите выйти?"
-    };
-    dialog_label(commands, panel, title, 25., font);
-    dialog_label(commands, panel, "Enter — выйти, Esc — отменить", 16., font);
-    if game.editor.as_ref().is_some_and(|e| e.dirty) {
-        dialog_label(
-            commands,
-            panel,
-            "Несохранённые изменения уровня будут потеряны.",
-            16.,
-            font,
-        );
-    }
-    let row = commands
-        .spawn(Node {
-            column_gap: px(24),
-            ..default()
-        })
-        .id();
-    commands.entity(panel).add_child(row);
-    for (text, action, color) in [
-        ("Отменить", Action::CancelExit, Color::srgb(0.1, 0.4, 0.15)),
-        ("Выйти", Action::ConfirmExit, Color::srgb(0.55, 0.12, 0.08)),
-    ] {
-        let button = commands
-            .spawn((
-                Button,
-                action,
-                Node {
-                    width: px(190),
-                    height: px(52),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    border_radius: BorderRadius::all(px(7)),
-                    ..default()
-                },
-                BackgroundColor(color),
-                super::menu::ImageButton { background: color },
-            ))
-            .id();
-        dialog_label(commands, button, text, 22., font);
-        commands.entity(row).add_child(button);
+fn build_exit_dialog(
+    commands: &mut Commands,
+    game: &Game,
+    _font: &Handle<Font>,
+    art: &super::native_menu::NativeArt,
+) {
+    match game.exit_dialog {
+        Some(ExitTarget::Application) => super::native_menu::build_quit_dialog(commands, art),
+        Some(ExitTarget::Editor) => super::native_menu::build_editor_exit_dialog(commands, art),
+        None => {}
     }
 }
 
@@ -678,6 +857,7 @@ mod tests {
         game.profile = crate::storage::Profile::default();
         game.display_rate.refresh_rate_millihertz = Some(144_000);
         game.open_settings();
+        game.settings_page = super::super::settings::Page::Advanced;
         let mut app = App::new();
         app.insert_resource(game)
             .init_resource::<super::super::menu::MenuArt>()
@@ -795,14 +975,51 @@ mod tests {
                 (buttons, super::super::settings::sliders, rebuild).chain(),
             );
         app.update();
-        click_button(&mut app, |a| matches!(a, Action::NoDeathEffect));
-        click_button(&mut app, |a| matches!(a, Action::HideCheckpointButtons));
         click_button(&mut app, |a| {
             matches!(
                 a,
-                Action::VolumeStep(crate::storage::MusicChannel::Level, -5)
+                Action::SettingsPage(super::super::settings::Page::Options(
+                    super::super::settings::Tab::Gameplay
+                ))
             )
         });
+        click_button(&mut app, |a| {
+            matches!(
+                a,
+                Action::SettingsPage(super::super::settings::Page::Options(
+                    super::super::settings::Tab::Visual
+                ))
+            )
+        });
+        click_button(&mut app, |a| matches!(a, Action::NoDeathEffect));
+        click_button(&mut app, |a| {
+            matches!(
+                a,
+                Action::SettingsPage(super::super::settings::Page::Options(
+                    super::super::settings::Tab::Practice
+                ))
+            )
+        });
+        click_button(&mut app, |a| matches!(a, Action::HideCheckpointButtons));
+        click_button(&mut app, |a| matches!(a, Action::SettingsBack));
+        let slider = app
+            .world_mut()
+            .query::<(Entity, &super::super::settings::MusicSlider)>()
+            .iter(app.world())
+            .find(|(_, s)| s.0 == crate::storage::MusicChannel::Level)
+            .unwrap()
+            .0;
+        *app.world_mut().get_mut::<Interaction>(slider).unwrap() = Interaction::Pressed;
+        app.world_mut()
+            .get_mut::<bevy::ui::RelativeCursorPosition>(slider)
+            .unwrap()
+            .normalized = Some(Vec2::new(0.45, 0.));
+        {
+            let mut mouse = app.world_mut().resource_mut::<ButtonInput<MouseButton>>();
+            mouse.reset_all();
+            mouse.press(MouseButton::Left);
+        }
+        app.update();
         // Underlying pause actions are blocked by the settings modal.
         click_button(&mut app, |a| matches!(a, Action::Resume));
         assert_eq!(app.world().resource::<Game>().screen, Screen::Paused);
@@ -880,20 +1097,31 @@ mod tests {
                 .init_resource::<ButtonInput<MouseButton>>()
                 .add_systems(Update, (buttons, rebuild).chain());
             app.update();
-            let game = app.world().resource::<Game>();
-            assert_eq!(game.screen, Screen::Editor);
-            assert_eq!(game.exit_dialog, Some(ExitTarget::Editor));
+            assert!(
+                app.world()
+                    .resource::<Game>()
+                    .editor
+                    .as_ref()
+                    .unwrap()
+                    .pause_open
+            );
+            assert!(app.world().resource::<Game>().exit_dialog.is_none());
+            click_button(&mut app, |action| matches!(action, Action::ExitEditor));
+            assert_eq!(
+                app.world().resource::<Game>().exit_dialog,
+                Some(ExitTarget::Editor)
+            );
             let labels = app
                 .world_mut()
-                .query::<&Text>()
+                .query::<&super::super::native_menu::BitmapText>()
                 .iter(app.world())
-                .map(|t| t.0.as_str())
+                .map(|t| t.value.as_str())
                 .collect::<Vec<_>>();
-            assert!(labels.contains(&"Выйти из редактора?"));
-            assert_eq!(
-                labels.contains(&"Несохранённые изменения уровня будут потеряны."),
-                dirty
-            );
+            assert!(labels.contains(&"Exit"));
+            assert!(labels.contains(&"Exit without saving? All unsaved changes"));
+            assert!(labels.contains(&"will be lost!"));
+            assert!(labels.contains(&"No"));
+            assert!(labels.contains(&"Yes"));
 
             // Escape dismisses the editor dialog instead of discarding the level.
             app.world_mut().resource_mut::<Game>().escape();
@@ -940,12 +1168,14 @@ mod tests {
         app.update();
         let labels = app
             .world_mut()
-            .query::<&Text>()
+            .query::<&super::super::native_menu::BitmapText>()
             .iter(app.world())
-            .map(|t| t.0.as_str())
+            .map(|t| t.value.as_str())
             .collect::<Vec<_>>();
-        assert!(labels.contains(&"Отменить"));
-        assert!(labels.contains(&"Выйти"));
+        assert!(labels.contains(&"Quit Game"));
+        assert!(labels.contains(&"Are you sure you want to quit?"));
+        assert!(labels.contains(&"Cancel"));
+        assert!(labels.contains(&"Yes"));
         let cancel = app
             .world_mut()
             .query::<(Entity, &Action)>()
@@ -1003,5 +1233,68 @@ mod tests {
         app.update();
         let mut query = app.world_mut().query::<&Button>();
         assert!(query.iter(app.world()).count() > 25);
+    }
+    #[test]
+    fn settings_video_changes_apply_explicitly_and_escape_returns_one_page() {
+        use super::super::settings::{Page, Tab};
+        let mut game = Game::new(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+        game.root = std::env::temp_dir().join(format!("gd-video-ui-{}", std::process::id()));
+        let root = game.root.clone();
+        game.profile = crate::storage::Profile::default();
+        game.screen(Screen::Paused);
+        game.open_settings();
+        let mut app = App::new();
+        app.insert_resource(game)
+            .init_resource::<super::super::menu::MenuArt>()
+            .init_resource::<super::super::native_menu::NativeArt>()
+            .init_resource::<super::super::editor_ui::EditorArt>()
+            .init_resource::<DialogFont>()
+            .init_resource::<ButtonInput<MouseButton>>()
+            .add_systems(Update, (buttons, rebuild).chain());
+        app.update();
+        click_button(&mut app, |a| {
+            matches!(a, Action::SettingsPage(Page::Graphics))
+        });
+        click_button(&mut app, |a| matches!(a, Action::VideoFullscreen));
+        assert!(!app.world().resource::<Game>().profile.settings.fullscreen);
+        assert!(app.world().resource::<Game>().settings_video.fullscreen);
+        click_button(&mut app, |a| matches!(a, Action::VideoApply));
+        assert!(
+            crate::storage::Profile::load(&root)
+                .unwrap()
+                .settings
+                .fullscreen
+        );
+        assert_eq!(app.world().resource::<Game>().settings_page, Page::Main);
+        click_button(&mut app, |a| {
+            matches!(a, Action::SettingsPage(Page::Graphics))
+        });
+        click_button(&mut app, |a| {
+            matches!(a, Action::SettingsPage(Page::Advanced))
+        });
+        for expected in [Page::Graphics, Page::Main] {
+            app.world_mut().resource_mut::<Game>().escape();
+            app.update();
+            let game = app.world().resource::<Game>();
+            assert!(game.settings_open);
+            assert_eq!(game.settings_page, expected);
+            assert_eq!(game.screen, Screen::Paused);
+        }
+        click_button(&mut app, |a| {
+            matches!(a, Action::SettingsPage(Page::Options(Tab::Gameplay)))
+        });
+        click_button(&mut app, |a| {
+            matches!(a, Action::Setting(super::super::settings::Toggle::Time))
+        });
+        assert!(
+            crate::storage::Profile::load(&root)
+                .unwrap()
+                .settings
+                .show_time
+        );
+        app.world_mut().resource_mut::<Game>().escape();
+        app.world_mut().resource_mut::<Game>().escape();
+        assert!(!app.world().resource::<Game>().settings_open);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
